@@ -1,0 +1,10 @@
+ruff
+pylint
+pytest
+pymongo
+pre-commit
+llama-index
+llama-parse
+llama-index-llms-openrouter
+llama-index-embeddings-gemini
+llama-index-vector-stores-mongodb
