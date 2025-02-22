@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Dict, List
 
 from llama_index.core import Document, SimpleDirectoryReader
@@ -33,7 +34,7 @@ class DocumentParser:
         ).load_data()
         return documents
 
-    def parse_dir(self, input_dir: str) -> List[Document]:
+    def parse_dir(self, input_dir: Path | str) -> List[Document]:
         """
         Parse documents from the specified directory.
 
@@ -47,7 +48,7 @@ class DocumentParser:
         print(f"Parsed {len(documents)} documents from '{input_dir}'.")
         return documents
 
-    def parse_file(self, input_file_path: str) -> List[Document]:
+    def parse_file(self, input_file_path: Path | str) -> List[Document]:
         """
         Parse a single document from document file path.
 
