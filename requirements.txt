@@ -1,7 +1,9 @@
 ruff
+openai
 pylint
 pytest
 pymongo
+ipykernel
 pre-commit
 llama-index
 llama-parse
