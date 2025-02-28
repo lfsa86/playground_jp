@@ -72,7 +72,7 @@ class PDFParser:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        dpi: int = 300,
+        dpi: int = 150,
         max_workers: int = 5,
         remove_code_markers: bool = True,
     ):
@@ -322,7 +322,7 @@ class PDFParser:
                 content = self._clean_response_text(content)
 
             # Ensure page number appears at the beginning
-            page_header = f"Página `{page_index + 1}`\n\n"
+            page_header = f"Página {page_index + 1}\n\n"
             return page_header + content
 
         except Exception as e:
