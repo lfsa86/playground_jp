@@ -276,16 +276,19 @@ class PDFParser:
                     )
                     raise
 
-    def _transcribe_page_parallel(self, image: Image.Image, custom_prompt: str) -> str:
+    def _transcribe_page_parallel(
+        self, image: Image.Image, custom_prompt: str, page_index: int
+    ) -> str:
         """
         Transcribe a single page in parallel.
 
         Args:
             image: The image of the page to transcribe
             custom_prompt: The custom prompt for transcription
+            page_index: The index of the page (0-based)
 
         Returns:
-            Transcribed content in Markdown/HTML format
+            Transcribed content in Markdown/HTML format with page number at the beginning
 
         Raises:
             Exception: If transcription fails, with error details
@@ -304,6 +307,7 @@ class PDFParser:
             6. No agregues contenido adicional
             7. No omitas ningún detalle del documento original
             8. No incluyas marcadores de bloques de código (```) en la respuesta
+            9. Esta es la página {page_index + 1} del documento
             """
 
             response = self.model.generate_content(
@@ -313,9 +317,13 @@ class PDFParser:
                 ]
             )
 
+            content = response.text
             if self.remove_code_markers:
-                return self._clean_response_text(response.text)
-            return response.text
+                content = self._clean_response_text(content)
+
+            # Ensure page number appears at the beginning
+            page_header = f"Página `{page_index + 1}`\n\n"
+            return page_header + content
 
         except Exception as e:
             logger.error(f"Error transcribing page: {e}")
@@ -376,9 +384,9 @@ class PDFParser:
             results = []
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 futures = []
-                for image in images:
+                for i, image in enumerate(images):
                     future = executor.submit(
-                        self._transcribe_page_parallel, image, custom_prompt
+                        self._transcribe_page_parallel, image, custom_prompt, i
                     )
                     futures.append(future)
 
