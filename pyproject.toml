@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "google-generativeai>=0.8.4",
     "ipykernel>=6.29.5",
+    "langchain-community>=0.3.18",
+    "langchain>=0.3.19",
     "markdown-it-py>=3.0.0",
     "openai>=1.65.1",
     "pillow>=11.1.0",
@@ -14,4 +16,5 @@ dependencies = [
     "pymupdf>=1.25.3",
     "python-dotenv>=1.0.1",
     "ruff>=0.9.8",
+    "tqdm>=4.67.1",
 ]
