@@ -1,0 +1,80 @@
+# Entornos virtuales y dependencias
+.venv/
+env/
+venv/
+pip-wheel-metadata/
+pip-log.txt
+pip-delete-this-directory.txt
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de configuración de entorno y credenciales
+.env
+.env.local
+*.secret
+*.config
+secrets.json
+
+# Configuración de editores y herramientas
+.vscode/
+.idea/
+*.sublime-workspace
+*.swp
+*.swo
+
+# Archivos generados por el sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Archivos de caché y logs
+logs/
+*.log
+*.bak
+*.tmp
+cache/
+__cache__/
+tmp/
+tmp_*/
+
+# Jupyter Notebooks y datos temporales
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# Modelos, bases de datos y archivos generados
+models/
+data/
+datasets/
+output/
+*.h5
+*.pkl
+*.db
+*.sqlite
+*.jsonl
+*.csv
+*.tsv
+*.parquet
+
+# Archivos de compilación y distribución
+build/
+dist/
+*.egg-info/
+*.spec
+
+# Caché de herramientas de linting y análisis
+.mypy_cache/
+ruff_cache/
+pytest_cache/
+coverage/
+htmlcov/
+__pypackages__/
+
+# Archivos de `uv` y Poetry
+uv.lock
+poetry.lock
+poetry.toml
+
+# Archivos de Git
+.gitignore
+.gitattributes
