@@ -1,6 +1,66 @@
+# Entorno virtual
 .venv/
+env/
+venv/
+
+# Archivos compilados de Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Variables de entorno y credenciales
 .env
+.env.local
+*.secret
+
+# Configuración específica de editores y herramientas
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos generados por el sistema operativo
 .DS_Store
-pdf-parser/notebooks/data
+Thumbs.db
+
+# Archivos de caché y logs
+logs/
+*.log
+*.bak
+
+# Archivos de Jupyter Notebook y datos intermedios
+.ipynb_checkpoints/
+
+# Modelos y datos preprocesados
+models/
+data/
+datasets/
+output/
+*.h5
+*.pkl
+*.db
+
+# Dependencias de Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Archivos de compilación y distribución
+build/
+dist/
+*.egg-info/
+*.spec
+
+# Caché de herramientas de IA y procesamiento de textos
+cache/
+__cache__/
+tmp/
+tmp_*/
+
+# Archivos de configuración de Git
+.gitignore
+.gitattributes
+
+# Configuraciones de herramientas de formato/linting
+.mypy_cache/
+ruff_cache/
+pytest_cache/
