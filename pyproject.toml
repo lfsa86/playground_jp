@@ -5,16 +5,18 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "google-generativeai>=0.8.4",
     "ipykernel>=6.29.5",
     "langchain-community>=0.3.18",
     "langchain>=0.3.19",
-    "markdown-it-py>=3.0.0",
-    "openai>=1.65.1",
     "pillow>=11.1.0",
     "pydantic>=2.10.6",
     "pymupdf>=1.25.3",
     "python-dotenv>=1.0.1",
     "ruff>=0.9.8",
     "tqdm>=4.67.1",
+    "pandas>=2.2.3",
+    "openpyxl>=3.1.5",
+    "langchain-openai>=0.3.7",
+    "langchain-google-genai>=2.0.11",
+    "langchain-openrouter>=0.0.1",
 ]
