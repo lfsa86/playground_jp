@@ -13,7 +13,6 @@ class Page(BaseModel):
 
     Attributes:
         page_number (Optional[int]): The page number. Can be None if not found.
-        paragraphs (List[str]): A list of paragraphs in the page.
     """
 
     page_summary: str
@@ -34,7 +33,30 @@ class Document(BaseModel):
     metadata: Dict
 
 class ElementNode:
+    """
+    Represents a node in a document tree structure.
+
+    Each node contains a title, content, hierarchical level, and references to parent and children nodes.
+
+    Attributes:
+        id (str): Unique identifier for the node, automatically generated using UUID.
+        title (str): The title or heading text of the node.
+        level (int): The hierarchical level of the node (e.g., 1 for h1, 2 for h2).
+        content (str): The text content associated with this node.
+        parent_id (str): The ID of the parent node, or None if this is a root node.
+        children_ids (list): List of IDs of child nodes.
+    """
+
     def __init__(self, title="", level=0,content="", parent_id=None):
+        """
+        Initialize a new ElementNode.
+
+            Args:
+                title (str, optional): The title of the node. Defaults to empty string.
+                level (int, optional): The hierarchical level. Defaults to 0.
+                content (str, optional): The text content. Defaults to empty string.
+                parent_id (str, optional): The ID of the parent node. Defaults to None.
+        """
         self.id = str(uuid.uuid4())
         self.title = title
         self.level = level
@@ -42,8 +64,13 @@ class ElementNode:
         self.parent_id = parent_id
         self.children_ids = []
 
-
     def to_dict(self):
+        """
+        Convert the node to a dictionary representation.
+
+        Returns:
+            dict: A dictionary containing all node attributes.
+        """
         return {
             "id": self.id,
             "title": self.title,
@@ -55,6 +82,15 @@ class ElementNode:
 
     @classmethod
     def from_dicts(cls, node_dict):
+        """
+        Create an ElementNode instance from a dictionary.
+
+        Args:
+            node_dict (dict): Dictionary containing node attributes.
+
+        Returns:
+            ElementNode: A new instance with attributes set from the dictionary.
+        """
         node = cls(
             title=node_dict["title"],
             level=node_dict["level"],
@@ -67,12 +103,37 @@ class ElementNode:
 
         return node
 class DocumentTree:
+    """
+    Represents a hierarchical document structure as a tree of ElementNodes.
+
+    This class provides methods to build, manipulate, and serialize a document tree.
+
+    Attributes:
+        nodes (dict): Dictionary mapping node IDs to ElementNode objects.
+        root_node (ElementNode): The root node of the tree.
+    """
+
     def __init__(self):
+        """
+        Initialize a new DocumentTree with a root node.
+        """
         self.nodes = {}
         self.root_node = ElementNode(title="root", level=0)
         self.nodes[self.root_node.id] = self.root_node
 
     def add_node(self, title, level, content="", parent_id=None):
+        """
+        Add a new node to the document tree.
+
+        Args:
+            title (str): The title of the node.
+            level (int): The hierarchical level of the node.
+            content (str, optional): The text content. Defaults to empty string.
+            parent_id (str, optional): The ID of the parent node. Defaults to None.
+
+        Returns:
+            str: The ID of the newly created node.
+        """
         node = ElementNode(title=title, level=level, content=content, parent_id=parent_id)
         self.nodes[node.id] = node
         if parent_id and parent_id in self.nodes:
@@ -80,15 +141,42 @@ class DocumentTree:
         return node.id
 
     def get_node(self, node_id):
+        """
+        Retrieve a node by its ID.
+
+        Args:
+            node_id (str): The ID of the node to retrieve.
+
+        Returns:
+            ElementNode: The node with the specified ID, or None if not found.
+        """
         return self.nodes.get(node_id)
 
     def find_node_by_title(self, title):
+        """
+        Find a node by its title.
+
+        Args:
+            title (str): The title to search for.
+
+        Returns:
+            ElementNode: The first node with the matching title, or None if not found.
+        """
         for node in self.nodes.values():
             if node.title == title:
                 return node
         return None
 
     def get_path_to_node(self, node_id):
+        """
+        Get the path from the root to a specified node.
+
+        Args:
+            node_id (str): The ID of the target node.
+
+        Returns:
+            list: A list of tuples (node_id, title) representing the path.
+        """
         path: List = []
         current_id = node_id
         while current_id is not None:
@@ -99,6 +187,12 @@ class DocumentTree:
             path.reverse()
             return path
     def to_dict(self):
+        """
+        Convert the entire document tree to a dictionary representation.
+
+        Returns:
+            dict: A dictionary containing the root ID and all nodes.
+        """
         return {
             "root_id": self.root_node.id,
             "nodes": {node.id: node.to_dict() for node_id, node in self.nodes.items()}
@@ -106,6 +200,15 @@ class DocumentTree:
 
     @classmethod
     def from_dict(cls, tree_dict):
+        """
+        Create a DocumentTree instance from a dictionary.
+
+        Args:
+            tree_dict (dict): Dictionary containing tree structure.
+
+        Returns:
+            DocumentTree: A new instance with nodes reconstructed from the dictionary.
+        """
         tree: DocumentTree = cls()
         tree.nodes= {
         }
@@ -114,8 +217,13 @@ class DocumentTree:
             tree.root_node = tree.nodes[tree_dict["root_id"]]
             return tree
     def save_to_json(self, filename):
+        """
+        Save the document tree to a JSON file.
+
+        Args:
+            filename (str): The path to the output JSON file.
+        """
         try:
-            tree_dict = self.to_dict()
             with open(filename, 'w', encoding="utf-8") as f:
                 json.dump(self.to_dict(), f, ensure_ascii=False, indent=4)
         except TypeError as e:
@@ -123,11 +231,28 @@ class DocumentTree:
 
     @classmethod
     def load_from_json(cls, filename):
+
+        """
+        Load a document tree from a JSON file.
+
+        Args:
+            filename (str): The path to the JSON file.
+
+        Returns:
+            DocumentTree: A new instance loaded from the file.
+        """
         with open(filename, 'r', encoding="utf-8") as f:
             tree_dict = json.load(f)
         return cls.from_dict(tree_dict)
 
     def generate_toc(self):
+
+        """
+        Generate a table of contents for the document.
+
+        Returns:
+            str: A markdown-formatted table of contents.
+        """
         lines = ["Tabla de Contenido\n"]
 
         def build_toc(node_id, level=0):
@@ -144,15 +269,42 @@ class DocumentTree:
         return '\n'.join(lines)
 
 class ElementParser():
+    """
+    Parser for extracting document structure from markdown text.
+
+    This class parses markdown headings and content to build a DocumentTree.
+    """
     def __init__(self):
+        """
+        Initialize the parser with a regex pattern for markdown headings.
+        """
         self.heading_pattern = re.compile(r'^(#{1,6})\s+(.+)$')
 
     def parse_file(self, file):
+        """
+        Parse a markdown file into a DocumentTree.
+
+        Args:
+            file (str): Path to the markdown file.
+
+        Returns:
+            DocumentTree: A tree representing the document structure.
+        """
         with open(file, 'r', encoding="utf-8") as f:
             content = f.read()
         return self.parse_text(content)
 
     def parse_text(self, text):
+
+        """
+        Parse markdown text into a DocumentTree.
+
+        Args:
+            text (str): Markdown text to parse.
+
+        Returns:
+            DocumentTree: A tree representing the document structure.
+        """
         tree = DocumentTree()
         lines = text.split("\n")
         current_node_id = tree.root_node.id
@@ -186,23 +338,42 @@ class ElementParser():
         return tree
 
 class ElementIterator:
+    """
+    Iterator for traversing nodes in a DocumentTree.
+
+    Provides methods for different traversal strategies (depth-first, breadth-first)
+    and filtering nodes based on criteria.
+    """
+
     def __init__(self, tree: DocumentTree):
+        """
+        Initialize the iterator with a document tree.
+
+        Args:
+            tree (DocumentTree): The document tree to iterate over.
+        """
         self.tree = tree
 
     def iterate_all(self):
+        """
+        Iterate through all nodes in the tree without specific order.
+
+        Yields:
+            tuple: (node_id, node) for each node in the tree.
+        """
         for node_id, node in self.tree.nodes.items():
             yield node_id, node
 
     def iterate_depth_first(self, start_node_id=None, skip_root=True):
         """
-        Recorre los nodos en orden jerárquico (profundidad primero).
+        Traverse nodes in depth-first order (hierarchical order).
 
         Args:
-            start_node_id (str, optional): ID del nodo desde donde comenzar
-            skip_root (bool): Si se debe saltar el nodo raíz
+            start_node_id (str, optional): ID of the node to start from. Defaults to root.
+            skip_root (bool): Whether to skip the root node. Defaults to True.
 
         Yields:
-            tuple: (node_id, node, depth) para cada nodo
+            tuple: (node_id, node, depth) for each node in the traversal.
         """
         if start_node_id is None:
             start_node_id = self.tree.root_node.id
@@ -227,6 +398,16 @@ class ElementIterator:
         yield from _dfs(start_node_id)
 
     def iterate_breadth_first(self, start_node_id=None, skip_root=True):
+        """
+        Traverse nodes in breadth-first order (level by level).
+
+        Args:
+            start_node_id (str, optional): ID of the node to start from. Defaults to root.
+            skip_root (bool): Whether to skip the root node. Defaults to True.
+
+        Yields:
+            tuple: (node_id, node, depth) for each node in the traversal.
+        """
         if start_node_id is None:
             start_node_id = self.tree.root_node.id
             queue = deque([(start_node_id, 0)])
@@ -244,24 +425,74 @@ class ElementIterator:
                     queue.append((child_id, depth + 1))
 
     def filter_nodes(self, criteria_func):
+        """
+        Filter nodes based on a criteria function.
+
+        Args:
+            criteria_func (callable): A function that takes a node and returns a boolean.
+
+        Returns:
+            list: List of (node_id, node) tuples for nodes that match the criteria.
+        """
         return [(node_id, node) for node_id, node in self.tree.nodes.items() if criteria_func(node)]
 
 class DocumentProcessor:
+    """
+    High-level processor for document operations.
+
+    Provides methods for parsing, saving, and exporting document trees.
+    """
     def __init__(self):
+        """
+        Initialize the document processor with an ElementParser.
+        """
         self.parser = ElementParser()
 
     def process_file(self, file):
+        """
+        Process a markdown file into a DocumentTree.
+
+        Args:
+            file (str): Path to the markdown file.
+
+        Returns:
+            DocumentTree: A tree representing the document structure.
+        """
         return self.parser.parse_file(file)
 
     def save_tree(self, tree: DocumentTree, output_file):
+
+        """
+        Save a document tree to a JSON file.
+
+        Args:
+            tree (DocumentTree): The document tree to save.
+            output_file (str): Path to the output JSON file.
+        """
         tree.save_to_json(output_file)
 
     def generate_toc(self, tree: DocumentTree, output_file):
+
+        """
+        Generate and save a table of contents for a document tree.
+
+        Args:
+            tree (DocumentTree): The document tree.
+            output_file (str): Path to the output markdown file.
+        """
         toc = tree.generate_toc()
         with open(output_file, 'w', encoding="utf-8") as f:
             f.write(toc)
 
     def export_to_html(self, tree, output_file):
+
+        """
+        Export a document tree to an HTML file.
+
+        Args:
+            tree (DocumentTree): The document tree to export.
+            output_file (str): Path to the output HTML file.
+        """
         html = ["<!DOCTYPE html>", "<html>", "<head>",
                 "<title>Documento Exportado</title>",
                 "<meta charset='utf-8'>",
@@ -279,6 +510,5 @@ class DocumentProcessor:
         html.extend(["</body>", "</html>"])
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("\n".join(html))
-                
 
 
