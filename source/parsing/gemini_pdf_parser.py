@@ -1,23 +1,22 @@
+import base64
 import io
+import logging
 import os
 import random
-import base64
-import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Any
+from typing import Any, Dict, List, Optional, Union
 
 import fitz  # PyMuPDF
-from PIL import Image
-from tqdm import tqdm
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain.schema import HumanMessage
+from PIL import Image
+from tqdm import tqdm
 
 # Logging configuration
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-class PDFParser:
+class GeminiPDFParser:
     """
     Class to transcribe PDF documents into Markdown with HTML tables.
 
@@ -37,12 +36,12 @@ class PDFParser:
     """
 
     def __init__(
-            self,
-            api_key: Optional[str] = None,
-            dpi: int = 150,
-            max_workers: int = 50,
-            remove_code_markers: bool = True,
-            max_requests_per_minute: int = 2000,
+        self,
+        api_key: Optional[str] = None,
+        dpi: int = 150,
+        max_workers: int = 50,
+        remove_code_markers: bool = True,
+        max_requests_per_minute: int = 2000,
     ):
         """
         Initialize the PDFParser.
@@ -78,11 +77,11 @@ class PDFParser:
             model="gemini-2.0-flash",
             model_provider="google-genai",
             temperature=0.1,
-            max_tokens=8192
+            max_tokens=8192,
         )
 
     def _convert_pdf_to_images(
-            self, pdf_path: Union[str, Path], force_reload: bool = False
+        self, pdf_path: Union[str, Path], force_reload: bool = False
     ) -> List[Image.Image]:
         """
         Convert PDF pages into high-quality images.
@@ -114,16 +113,14 @@ class PDFParser:
         total_pages = len(doc)
 
         with tqdm(
-                total=total_pages, desc="Converting PDF to images", unit="page"
+            total=total_pages, desc="Converting PDF to images", unit="page"
         ) as pbar:
             try:
                 for page in doc:
                     pix = page.get_pixmap(
                         matrix=fitz.Matrix(self.dpi / 72, self.dpi / 72)
                     )
-                    img = Image.frombytes(
-                        "RGB", [pix.width, pix.height], pix.samples
-                    )
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                     images.append(img)
                     pbar.update(1)
             finally:
@@ -329,7 +326,7 @@ class PDFParser:
         """
 
     def _transcribe_page(
-            self, image: Image.Image, custom_prompt: str, page_index: int
+        self, image: Image.Image, custom_prompt: str, page_index: int
     ) -> str:
         """
         Transcribe a single page using a base64-encoded image.
@@ -445,11 +442,11 @@ class PDFParser:
             return f"Error transcribing page {page_index + 1}: {e}"
 
     def transcribe_pdf(
-            self,
-            pdf_path: Union[str, Path],
-            output_path: Optional[Union[str, Path]] = None,
-            sample_pages: int = 3,
-            images: Optional[List[Image.Image]] = None,
+        self,
+        pdf_path: Union[str, Path],
+        output_path: Optional[Union[str, Path]] = None,
+        sample_pages: int = 3,
+        images: Optional[List[Image.Image]] = None,
     ) -> Path:
         """
         Transcribe a PDF document into Markdown with HTML tables.
@@ -500,7 +497,7 @@ class PDFParser:
             results = [None] * len(images)  # Pre-allocate results to maintain order
 
             with tqdm(
-                    total=len(images), desc="Transcribing pages", unit="page"
+                total=len(images), desc="Transcribing pages", unit="page"
             ) as pbar:
                 with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     futures = {
@@ -535,11 +532,11 @@ class PDFParser:
             raise
 
     def batch_transcribe_pdfs(
-            self,
-            pdf_dir: Union[str, Path],
-            output_dir: Optional[Union[str, Path]] = None,
-            sample_pages: int = 3,
-            file_pattern: str = "*.pdf",
+        self,
+        pdf_dir: Union[str, Path],
+        output_dir: Optional[Union[str, Path]] = None,
+        sample_pages: int = 3,
+        file_pattern: str = "*.pdf",
     ) -> List[Path]:
         """
         Batch transcribe multiple PDF documents in a directory.
@@ -591,7 +588,7 @@ class PDFParser:
         return output_paths
 
     def analyze_document_structure(
-            self, pdf_path: Union[str, Path], images: Optional[List[Image.Image]] = None
+        self, pdf_path: Union[str, Path], images: Optional[List[Image.Image]] = None
     ) -> Dict[str, Any]:
         """
         Analyze the structure of a PDF document without transcribing it.
@@ -674,7 +671,10 @@ class PDFParser:
             return {"error": str(e)}
 
     def extract_table_of_contents(
-            self, pdf_path: Union[str, Path], images: Optional[List[Image.Image]] = None, block_size: int = 5
+        self,
+        pdf_path: Union[str, Path],
+        images: Optional[List[Image.Image]] = None,
+        block_size: int = 5,
     ) -> str:
         """
         Extract the table of contents from all pages of a PDF document in smaller blocks.
@@ -705,12 +705,18 @@ class PDFParser:
 
             # Split images into blocks
             toc_parts = []
-            total_blocks = (len(images) + block_size - 1) // block_size  # Ceiling division
+            total_blocks = (
+                len(images) + block_size - 1
+            ) // block_size  # Ceiling division
 
-            with tqdm(total=total_blocks, desc="Extracting TOC in blocks", unit="block") as pbar:
+            with tqdm(
+                total=total_blocks, desc="Extracting TOC in blocks", unit="block"
+            ) as pbar:
                 for i in range(0, len(images), block_size):
-                    block_images = images[i:i + block_size]
-                    block_page_range = f"(Pages {i+1}-{min(i+block_size, len(images))})"
+                    block_images = images[i : i + block_size]
+                    block_page_range = (
+                        f"(Pages {i + 1}-{min(i + block_size, len(images))})"
+                    )
 
                     # Prepare images in this block
                     image_data_uris = [self._prepare_image(img) for img in block_images]
@@ -756,9 +762,11 @@ class PDFParser:
 
             # If we processed multiple blocks, add a note
             if len(toc_parts) > 1:
-                combined_toc = "# Combined Table of Contents\n\n" + \
-                               "_Note: This TOC was extracted in multiple blocks and combined._\n\n" + \
-                               combined_toc
+                combined_toc = (
+                    "# Combined Table of Contents\n\n"
+                    + "_Note: This TOC was extracted in multiple blocks and combined._\n\n"
+                    + combined_toc
+                )
 
             return combined_toc
 
@@ -767,7 +775,7 @@ class PDFParser:
             return f"Error extracting table of contents: {e}"
 
     def process_document(
-            self, pdf_path: Union[str, Path], output_dir: str = "results"
+        self, pdf_path: Union[str, Path], output_dir: str = "results"
     ) -> Dict[str, Any]:
         """
         Process a PDF document with a complete workflow:
@@ -792,38 +800,47 @@ class PDFParser:
         base_output_path = Path(output_dir) / filename
 
         # Setup progress tracking
-        steps = ["PDF Conversion", "Analysis", "TOC Extraction",
-                 "Transcription", "Saving Files"]
+        steps = [
+            "PDF Conversion",
+            "Analysis",
+            "TOC Extraction",
+            "Transcription",
+            "Saving Files",
+        ]
         results = {}
 
         with tqdm(
-                total=len(steps),
-                desc=f"Processing {pdf_path.name}",
-                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"
+            total=len(steps),
+            desc=f"Processing {pdf_path.name}",
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
         ) as pbar:
             # Step 1: Convert PDF to images (only once)
             pbar.set_description("Converting PDF to images")
             images = self._convert_pdf_to_images(pdf_path)
-            results['images'] = len(images)
+            results["images"] = len(images)
             pbar.update(1)
 
             # Step 2: Analyze document structure
             pbar.set_description("Analyzing document structure")
             analysis = self.analyze_document_structure(pdf_path, images=images)
-            results['analysis'] = analysis
+            results["analysis"] = analysis
             pbar.update(1)
 
             # Check if document has complex structure
-            analysis_text = analysis.get('analysis', '')
-            has_complex_tables = ("false tables" in analysis_text.lower() or
-                                  "complex tables" in analysis_text.lower())
+            analysis_text = analysis.get("analysis", "")
+            has_complex_tables = (
+                "false tables" in analysis_text.lower()
+                or "complex tables" in analysis_text.lower()
+            )
 
             # Step 3: Extract table of contents
             pbar.set_description("Extracting table of contents")
             # Use smaller block size for larger documents
             block_size = 3 if len(images) > 30 else 5
-            toc = self.extract_table_of_contents(pdf_path, images=images, block_size=block_size)
-            results['toc'] = toc
+            toc = self.extract_table_of_contents(
+                pdf_path, images=images, block_size=block_size
+            )
+            results["toc"] = toc
             pbar.update(1)
 
             # Step 4: Transcribe with optimized settings
@@ -836,9 +853,9 @@ class PDFParser:
                 pdf_path=pdf_path,
                 output_path=f"{base_output_path}_transcribed.md",
                 sample_pages=sample_pages,
-                images=images
+                images=images,
             )
-            results['transcription'] = output_path
+            results["transcription"] = output_path
             pbar.update(1)
 
             # Step 5: Save supplementary files
@@ -849,14 +866,14 @@ class PDFParser:
             with open(toc_path, "w", encoding="utf-8") as f:
                 f.write("# Table of Contents\n\n")
                 f.write(toc)
-            results['toc_file'] = toc_path
+            results["toc_file"] = toc_path
 
             # Save analysis
             analysis_path = f"{base_output_path}_analysis.md"
             with open(analysis_path, "w", encoding="utf-8") as f:
                 f.write("# Document Structure Analysis\n\n")
-                f.write(analysis.get('analysis', 'Analysis not available'))
-            results['analysis_file'] = analysis_path
+                f.write(analysis.get("analysis", "Analysis not available"))
+            results["analysis_file"] = analysis_path
 
             pbar.update(1)
 

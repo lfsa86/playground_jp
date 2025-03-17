@@ -8,6 +8,8 @@ pip-delete-this-directory.txt
 __pycache__/
 *.py[cod]
 *$py.class
+.ruff_cache/
+.gradio/
 
 # Archivos de configuración de entorno y credenciales
 .env
