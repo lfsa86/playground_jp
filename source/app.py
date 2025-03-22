@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import gradio as gr
 import pandas as pd
 from dotenv import load_dotenv
@@ -31,26 +33,19 @@ def process_pdf_file(pdf_file):
 
     # Step 1: Parse PDF
     parser = PDFParser()
-    file = parser.process_pdf(pdf_file)
+    file_name = Path(pdf_file).stem
+    file_content = parser.process_pdf(pdf_file)
     results.append("1. PDF parseado exitosamente")
 
     # Step 2: Classify statements
-    file_name, file_df = classify_statements(file)
+    file_df = classify_statements(file_name=file_name, md_content=file_content)
     results.append("2. Statements clasificados")
     results.append(f"Archivo: {file_name}")
     results.append(f"Statements encontrados: {len(file_df)}")
 
-    # Step 3: Extract components
-    component_extractor = ComponentExtractor()
-    component_df: DataFrame = component_extractor.extract(
-        file_name=file_name, df=file_df
-    )
-    results.append("3. Componentes extraídos")
-    results.append(f"Componentes encontrados: {len(component_df)}")
-
-    # Step 4: Extract commitments
+    # Step 3: Extract commitments
     commitment_extractor = CommitmentExtractor()
-    final_df = commitment_extractor.extract(file_name=file_name, df=component_df)
+    final_df = commitment_extractor.extract(file_name=file_name, df=file_df)
     results.append("4. Compromisos extraídos")
     results.append(f"Compromisos totales: {len(final_df)}")
 
@@ -58,14 +53,13 @@ def process_pdf_file(pdf_file):
     stats = f"""
     Resumen del proceso:
     - Statements totales: {len(file_df)}
-    - Componentes extraídos: {len(component_df)}
     - Compromisos finales: {len(final_df)}
     """
 
     # Ajustar el ancho de las columnas para mejor visualización
     pd.set_option("display.max_colwidth", None)
 
-    return ("\n".join(results), stats, file_df, component_df, final_df)
+    return ("\n".join(results), stats, file_df, final_df)
 
 
 with gr.Blocks(title="Herramienta de Análisis de PDF", css=custom_css) as demo:

@@ -80,7 +80,7 @@ class Compromiso(BaseModel):
     )
     time_of_execution: Optional[str] = Field(
         None,
-        description="Momento en el que se ejecuta el compromiso (ej., antes de la construcción)",
+        description="Momento o fase en el que se ejecuta el compromiso (ej., antes de la construcción)",
     )
     general_objective: str = Field(
         ...,

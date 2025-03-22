@@ -10,7 +10,7 @@ from source.parsing import HeadingParser, PDFParser
 
 set_verbose(True)
 load_dotenv()
-file_path = "data/raw/rca.pdf"
+file_path = "data/raw/meia.pdf"
 file_path = Path(file_path)
 file_name = file_path.stem
 
