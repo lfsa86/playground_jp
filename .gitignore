@@ -8,6 +8,8 @@ pip-delete-this-directory.txt
 __pycache__/
 *.py[cod]
 *$py.class
+.ruff_cache/
+.gradio/
 
 # Archivos de configuración de entorno y credenciales
 .env
@@ -27,6 +29,7 @@ secrets.json
 .DS_Store
 Thumbs.db
 desktop.ini
+data/
 
 # Archivos de caché y logs
 logs/
