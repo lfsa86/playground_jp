@@ -32,8 +32,8 @@ class Statement(BaseModel):
     category: str = Field(
         description="Generalidades, Implicaciones del Proyecto, Actividades, Riesgos e Impactos, Compromisos, Permisos"
     )
-    justification: str = Field(
-        description="Explicación breve del motivo de la clasificación."
+    justification: str = (
+        Field(description="Explicación breve del motivo de la clasificación."),
     )
     synthesis: str = Field(
         description="Sintesis extraida del texto acerca de la categorizacion del enunciado"
