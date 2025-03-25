@@ -259,7 +259,7 @@ class ElementParser:
         """
         Initialize the parser with a regex pattern for markdown headings.
         """
-        self.heading_pattern = re.compile(r"^(#{1,6})\s+(.+)$")
+        self.heading_pattern = re.compile(r"^(#{1,2})\s+(.+)$")
 
     def parse_file(self, file):
         """

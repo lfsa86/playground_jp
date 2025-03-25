@@ -27,7 +27,7 @@ from pandas import DataFrame
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
-from ..schemas import Compromiso
+from ..schemas import Commitment
 
 # System prompt for commitment extraction
 SYSTEM_PROMPT = """
@@ -36,10 +36,9 @@ Eres un asistente experto en análisis de documentos ambientales. Tu tarea es id
 
 ANALYSIS_TEMPLATE = """
 {system_prompt}
-{texto}
-En base al texto anterior extrae toda la informacion relacionada SOLO del siguiente item:
-{componente}
 
+Texto a analizar:
+{texto}
 NO ALUCINES
 """
 
@@ -68,7 +67,7 @@ class ThreadSafeLLM:
                         temperature=0,
                     )
                     self._llm_instances[thread_id] = llm.with_structured_output(
-                        Compromiso
+                        Commitment
                     )
                 except Exception as e:
                     logger.error(
@@ -112,27 +111,18 @@ class CommitmentExtractor:
             prompt = self.prompt_template.format_messages(
                 system_prompt=SYSTEM_PROMPT,
                 texto=row["text_content"],
-                componente=row["related_items"],
             )
             llm = self.llm_handler.get_llm()
-            response: Compromiso = llm.invoke(prompt)
+            response: Commitment = llm.invoke(prompt)
 
             result = {
                 "statement_index": row.index[0],
-                "item": row["related_items"].values[0],
-                "category": response.category,
-                "location": response.location,
-                "use_case": response.use_case,
-                "description": response.description,
-                "compromiso": response.commitment,
-                "tipology": response.tipology,
-                "zonification": response.zonification,
-                "related_metrics": response.related_metrics,
-                "reportability": response.reportability,
-                "fqreportability": response.fqreportability,
-                "time_of_execution": response.time_of_execution,
-                "general_objective": response.general_objective,
+                "titulo": row["heading_path"].values[0],
+                "componente_operativo": response.coa,
+                "componente_ambiental": response.caa,
+                "fase_aplicacion_del_compromiso": response.fase_aplicacion,
                 "text_content": row["text_content"].values[0],
+                "frecuencia_de_reporte": response.frecuencia_reporte,
             }
 
             with self._lock:
@@ -186,7 +176,6 @@ class CommitmentExtractor:
             DataFrame containing analyzed commitments.
         """
         commitment_df = df[df["category"].str.lower() == "compromisos"]
-        exploded_df = commitment_df.explode("related_items")
         logger.info(f"Starting commitment extraction for file: {file_name}")
 
         # Create output directory
@@ -198,7 +187,7 @@ class CommitmentExtractor:
             with ThreadPoolExecutor(max_workers=get_optimal_thread_count()) as executor:
                 futures = {
                     executor.submit(self.process_row, row=DataFrame([row])): idx
-                    for idx, row in exploded_df.iterrows()
+                    for idx, row in commitment_df.iterrows()
                 }
 
                 with tqdm(total=len(futures), desc="Processing rows") as pbar:
