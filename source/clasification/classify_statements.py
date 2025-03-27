@@ -191,7 +191,6 @@ def extract_statements(title: str, content: str, processor: StatementProcessor) 
             "category": response.category,
             "justification": response.justification,
             "synthesis": response.synthesis,
-            "related_items": response.elements,
             "heading_path": title,
             "text_content": str(title + "\n" + content),
         }
@@ -264,9 +263,7 @@ def save_results(statements: List[Dict], output_path: str):
         ),
         "statements.pkl": lambda df: df.to_pickle(f"{output_path}/statements.pkl"),
         "statements.csv": lambda df: df.to_csv(f"{output_path}/statements.csv"),
-        "statements.xlsx": lambda df: df.explode("related_items").to_excel(
-            f"{output_path}/statements.xlsx"
-        ),
+        "statements.xlsx": lambda df: df.to_excel(f"{output_path}/statements.xlsx"),
     }
 
     df = pd.DataFrame(statements)
