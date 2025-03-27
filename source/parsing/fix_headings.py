@@ -191,7 +191,7 @@ class HeadingParser:
             normalized_content = self.page_separator.join(normalized_pages)
 
             with open(os.path.join(output_path, f"{file_name}.md"), "w") as file:
-                file.write(normalized_content)
+                file.write(normalized_content, encoding="utf-8")
 
             logger.info("Completed heading normalization")
             return normalized_content
