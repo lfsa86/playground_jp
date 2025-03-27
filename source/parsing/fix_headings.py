@@ -8,21 +8,33 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 
 # Set multiprocessing start method to "spawn" before any other imports
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn", force=True)
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+    except RuntimeError as e:
+        logging.error(f"Failed to set multiprocessing start method: {e}")
 
 # Enable gRPC fork support
 os.environ["GRPC_FORK_SUPPORT_ENABLED"] = "1"
 
 # Configure logging early
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+try:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    logger = logging.getLogger(__name__)
+except Exception as e:
+    print(f"Failed to configure logging: {e}")
+    # Fallback logger
+    logger = logging.getLogger(__name__)
 
-from langchain.chat_models import init_chat_model
-from langchain.prompts import ChatPromptTemplate
-from tenacity import retry, stop_after_attempt, wait_exponential
-from tqdm import tqdm
+try:
+    from langchain.chat_models import init_chat_model
+    from langchain.prompts import ChatPromptTemplate
+    from tenacity import retry, stop_after_attempt, wait_exponential
+    from tqdm import tqdm
+except ImportError as e:
+    logger.error(f"Failed to import required modules: {e}")
+    raise
 
 # System prompt for heading normalization
 system_prompt = """
@@ -48,14 +60,16 @@ NORMALIZE_TEMPLATE = """
 Contenido a normalizar:
 
 {content}
-
-NO ALUCINES
 """
 
 
 def get_optimal_thread_count():
     """Calculate optimal thread count based on CPU cores."""
-    return min(32, (multiprocessing.cpu_count() * 2))
+    try:
+        return min(32, (multiprocessing.cpu_count() * 2))
+    except Exception as e:
+        logger.warning(f"Error determining CPU count: {e}. Using default value of 4.")
+        return 4
 
 
 class ThreadSafeLLM:
@@ -85,8 +99,11 @@ class ThreadSafeLLM:
 
     def cleanup(self):
         """Cleanup LLM instances."""
-        with self._lock:
-            self._llm_instances.clear()
+        try:
+            with self._lock:
+                self._llm_instances.clear()
+        except Exception as e:
+            logger.error(f"Error during LLM cleanup: {e}")
 
 
 class HeadingParser:
@@ -94,13 +111,17 @@ class HeadingParser:
 
     def __init__(self):
         """Initialize the parser with LLM model and prompt template."""
-        self.prompt_template = ChatPromptTemplate.from_template(
-            template=NORMALIZE_TEMPLATE
-        )
-        self.llm_handler = ThreadSafeLLM()
-        self.results = {}
-        self._lock = threading.Lock()
-        self.page_separator = "-----"
+        try:
+            self.prompt_template = ChatPromptTemplate.from_template(
+                template=NORMALIZE_TEMPLATE
+            )
+            self.llm_handler = ThreadSafeLLM()
+            self.results = {}
+            self._lock = threading.Lock()
+            self.page_separator = "-----"
+        except Exception as e:
+            logger.error(f"Error initializing HeadingParser: {e}")
+            raise
 
     @retry(
         stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
@@ -145,19 +166,30 @@ class HeadingParser:
         Normalize headings in markdown content using parallel processing.
 
         Args:
+            file_name: Name of the file being processed.
             md_content: Markdown content to normalize.
+            output_dir: Directory to save processed files.
 
         Returns:
             Normalized markdown content as a string.
         """
-        # Split content into pages
-        pages = md_content.split(self.page_separator)
-        logger.info(f"Starting heading normalization for {len(pages)} pages")
-        output_path = os.path.join(output_dir, file_name)
-        # Reset results
-        self.results = {}
-
         try:
+            # Split content into pages
+            pages = md_content.split(self.page_separator)
+            logger.info(f"Starting heading normalization for {len(pages)} pages")
+
+            # Create output directory if it doesn't exist
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+                output_path = os.path.join(output_dir, file_name)
+                os.makedirs(output_path, exist_ok=True)
+            except OSError as e:
+                logger.error(f"Failed to create output directory: {e}")
+                output_path = "."  # Fallback to current directory
+
+            # Reset results
+            self.results = {}
+
             # Process pages in parallel with progress bar
             with ThreadPoolExecutor(max_workers=get_optimal_thread_count()) as executor:
                 futures = {
@@ -171,7 +203,6 @@ class HeadingParser:
                     for future in as_completed(futures):
                         try:
                             future.result(timeout=120)  # 2-minute timeout
-                            pbar.update(1)
                         except TimeoutError:
                             logger.error(f"Timeout processing page {futures[future]}")
                         except Exception as e:
@@ -179,9 +210,7 @@ class HeadingParser:
                                 f"Error processing page {futures[future]}: {str(e)}"
                             )
                         finally:
-                            pbar.update(
-                                0
-                            )  # Ensure progress bar updates even on failure
+                            pbar.update(1)  # Always update progress
 
             # Create final normalized content
             normalized_pages = []
@@ -190,8 +219,13 @@ class HeadingParser:
 
             normalized_content = self.page_separator.join(normalized_pages)
 
-            with open(os.path.join(output_path, f"{file_name}.md"), "w") as file:
-                file.write(normalized_content, encoding="utf-8")
+            try:
+                output_file = os.path.join(output_path, f"{file_name}.md")
+                with open(output_file, "w", encoding="utf-8") as file:
+                    file.write(normalized_content)
+                logger.info(f"Successfully wrote normalized content to {output_file}")
+            except IOError as e:
+                logger.error(f"Failed to write output file: {e}")
 
             logger.info("Completed heading normalization")
             return normalized_content
@@ -201,4 +235,7 @@ class HeadingParser:
             return md_content  # Return original content on error
 
         finally:
-            self.llm_handler.cleanup()
+            try:
+                self.llm_handler.cleanup()
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}")
