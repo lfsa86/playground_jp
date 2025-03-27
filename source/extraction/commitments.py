@@ -122,8 +122,8 @@ class CommitmentExtractor:
                 "componente_operativo": response.coa,
                 "componente_ambiental": response.caa,
                 "fase_aplicacion_del_compromiso": response.fase_aplicacion,
-                "text_content": row["text_content"].values[0],
                 "frecuencia_de_reporte": response.frecuencia_reporte,
+                "text_content": row["text_content"].values[0],
             }
 
             with self._lock:
