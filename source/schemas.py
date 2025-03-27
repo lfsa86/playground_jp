@@ -20,6 +20,9 @@ class Statement(BaseModel):
 class Commitment(BaseModel):
     """Model for environmental commitment classification."""
 
+    summary: str = Field(
+        description="Resumen del explicativo del compromiso"
+    )
     coa: Optional[str] = Field(None, description="Componente operativo asociado")
     caa: Optional[str] = Field(
         None, description="Componente ambiental asociado (aire, agua, ruido, etc)"

@@ -110,7 +110,7 @@ class CommitmentExtractor:
         try:
             prompt = self.prompt_template.format_messages(
                 system_prompt=SYSTEM_PROMPT,
-                texto=row["text_content"],
+                texto=row["text_content"].values[0],
             )
             llm = self.llm_handler.get_llm()
             response: Commitment = llm.invoke(prompt)
@@ -118,6 +118,7 @@ class CommitmentExtractor:
             result = {
                 "statement_index": row.index[0],
                 "titulo": row["heading_path"].values[0],
+                "summary": response.summary,
                 "componente_operativo": response.coa,
                 "componente_ambiental": response.caa,
                 "fase_aplicacion_del_compromiso": response.fase_aplicacion,
