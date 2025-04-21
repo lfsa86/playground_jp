@@ -86,7 +86,7 @@ class PDFParser:
                 combined_md_content += f"{page.markdown}\n-----\n"
 
             # Save content to file
-            output_file.write_text(combined_md_content)
+            output_file.write_text(combined_md_content, encoding='utf-8')
 
             return combined_md_content
 
