@@ -21,4 +21,8 @@ Sigue estos pasos para configurar el entorno de desarrollo:
    source .venv/bin/activate  # Unix/macOS
    # .venv\Scripts\activate  # Windows
    ```
+4. **Corre el codigo
+   ```bash
+   uv run python -m source.main
+   ```  
 ¡Tu entorno está listo para usar!
