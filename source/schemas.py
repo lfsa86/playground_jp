@@ -32,3 +32,10 @@ class Commitment(BaseModel):
         description="Fase de aplicacion del compromiso (construccion, operacion, cierre, todas, etc)",
     )
     frecuencia_reporte: Optional[str] = Field(None, description="Frecuencia de reporte")
+
+class MultipleCommitments(BaseModel):
+    """Contenedor de múltiples compromisos extraídos de un solo texto."""
+
+    compromisos: List[Commitment] = Field(
+        ..., description="Lista de compromisos identificados en el bloque de texto"
+    )
