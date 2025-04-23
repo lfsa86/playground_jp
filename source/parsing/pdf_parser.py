@@ -1,6 +1,7 @@
 """Module for parsing PDF files using Mistral OCR."""
 
 import os
+import re
 from pathlib import Path
 from typing import Dict, Union
 
@@ -9,6 +10,89 @@ from mistralai import Mistral
 
 load_dotenv()
 
+def normalize_headings(md_text: str) -> str:
+    """
+    Detecta encabezados numerados y les agrega formato Markdown manteniendo el numeral,
+    o en su defecto promueve a ## o ### encabezados textuales comunes.
+    """
+    lines = md_text.splitlines()
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+
+        # Caso 1: encabezado numerado tipo "4.3.2 Manejo"
+        match_num = re.match(r'^(\d+(\.\d+)*\.?)\s+([A-ZÁÉÍÓÚÜÑa-z0-9].+)$', stripped)
+        if match_num:
+            level = match_num.group(1).count(".") + 1
+            new_lines.append(f"{'#' * level} {stripped}")
+            continue
+
+        # Caso 2: encabezado sin número, pero en mayúsculas
+        if re.match(r'^[A-ZÁÉÍÓÚÜÑ ]{5,}$', stripped):
+            new_lines.append(f"## {stripped.title()}")
+            continue
+
+        new_lines.append(line)
+    return "\n".join(new_lines)
+
+def promote_table_titles(md_text: str) -> str:
+    """
+    Detecta líneas de tabla con 'Nombre:', 'Carácter:' y 'Fase:', y:
+    - Promueve 'Nombre' como encabezado ##.
+    - Inserta la fila completa como texto estructurado Markdown debajo del encabezado.
+    """
+    lines = md_text.splitlines()
+    new_lines = []
+    for i, line in enumerate(lines):
+        # Detectar línea con los tres campos
+        match = re.match(
+            r'\|\s*Nombre:\s*(.*?)\s*\|\s*Carácter:\s*(.*?)\s*\|\s*Fase:\s*(.*?)\s*\|?',
+            line,
+            re.IGNORECASE
+        )
+        if match:
+            nombre = match.group(1).replace("<br>", " ").strip()
+            caracter = match.group(2).strip()
+            fase = match.group(3).strip()
+
+            new_lines.append(f"## {nombre}")
+            new_lines.append("")
+            new_lines.append(f"**Nombre**: {nombre}")
+            new_lines.append(f"**Carácter**: {caracter}")
+            new_lines.append(f"**Fase**: {fase}")
+            continue
+
+        # Fallback: solo 'Nombre'
+        match_simple = re.match(r'\|\s*Nombre:\s*(.*?)\s*\|', line, re.IGNORECASE)
+        if match_simple:
+            nombre = match_simple.group(1).replace("<br>", " ").strip()
+            nombre = re.sub(r'\s+', ' ', nombre)
+            new_lines.append(f"## {nombre}")
+            new_lines.append("")
+            new_lines.append(f"**Nombre**: {nombre}")
+            continue
+
+        new_lines.append(line)
+    return "\n".join(new_lines)
+
+def extract_all_two_column_subsections(md_text: str) -> str:
+    """
+    Detecta cualquier fila de tabla con exactamente dos columnas y convierte la primera celda en un encabezado Markdown seguido por el contenido de la segunda celda.
+
+    Ejemplo:
+    '| Descripción | Este es el contenido |' -> '### Descripción\n\nEste es el contenido'
+    """
+    lines = md_text.splitlines()
+    new_lines = []
+    for line in lines:
+        match = re.match(r'^\|\s*(.+?)\s*\|\s*(.+?)\s*\|?$', line)
+        if match:
+            heading = match.group(1).strip().rstrip('.')
+            content = match.group(2).strip()
+            new_lines.append(f"### {heading}\n\n{content}")
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines)
 
 class PDFParser:
     """A class to handle PDF parsing operations using Mistral OCR."""
@@ -83,8 +167,18 @@ class PDFParser:
             # Combine markdown content from all pages
             combined_md_content = ""
             for page in ocr_response.pages:
-                combined_md_content += f"{page.markdown}\n-----\n"
-
+                page_md = normalize_headings(page.markdown)
+                page_md = promote_table_titles(page_md)
+                page_md = extract_all_two_column_subsections(page_md)
+                combined_md_content += f"\n{page_md.strip()}\n\n-----\n"
+            
+            # Corrección post-procesamiento para headers mal formateados
+            combined_md_content = re.sub(
+            r'([^\n])(-{3,}\s*#+)',
+            lambda m: f"{m.group(1)}\n{m.group(2).lstrip('-').strip()}",
+            combined_md_content
+            )
+            
             # Save content to file
             output_file.write_text(combined_md_content, encoding='utf-8')
 

@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import threading
 import time
+import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import Dict, List
 
@@ -44,9 +45,9 @@ SYSTEM_PROMPT = """Eres un asistente especializado en analizar documentos regula
 
 2. Componentes: Identifica todos los elementos físicos, infraestructura o sistemas que serán construidos, instalados o modificados como parte del proyecto. Incluye especificaciones técnicas cuando estén disponibles.
 
-3. Implicaciones: Extrae información sobre los elementos implicados para el desarrollo del proyecto (acciones,actividades del proyecto, uso de recursos, etc.), incluyendo su relación con el entorno, la comunidad.
-
-4. Riesgos e Impactos: Identifica los potenciales riesgos e impactos ambientales descritos en el documento, tanto durante las fases de construcción como de operación.
+3. Riesgos, Impactos e Implicaciones:
+- Extrae información sobre los elementos implicados para el desarrollo del proyecto (acciones,actividades del proyecto, uso de recursos, etc.) considerando su relación con el entorno y comunidades.
+- Identifica los potenciales riesgos e impactos socio-ambientales descritos en el documento, durantes todas las fases del proyecto (construcción, operación y cierre).
 
 5. Compromisos: Extrae todos los compromisos realizados por el titular del proyecto, incluyendo medidas voluntarias que se vuelven obligatorias al ser incluidas en la Resolución de Calificación Ambiental (RCA).
 
@@ -165,9 +166,58 @@ def get_optimal_thread_count():
     """Calculate optimal thread count based on CPU cores."""
     return min(32, (multiprocessing.cpu_count()))
 
+def build_heading_path(node) -> str:
+    """Construye el path completo de encabezados desde la raíz hasta el nodo actual."""
+    titles = []
+    current = node
+    while current:
+        titles.append(current.title.strip())
+        current = getattr(current, "parent", None)
+    return " / ".join(reversed(titles))
+
+def merge_subnodes_under_h3(nodes: List[tuple]) -> List[tuple]:
+    """
+    Agrupa nodos con encabezado #### (depth=4) bajo su padre ### (depth=3)
+    si tienen contenido breve o están temáticamente relacionados.
+    """
+    merged_nodes = []
+    buffer_node = None
+
+    for node_id, node, depth in nodes:
+        if depth < 4:
+            # Si hay un buffer pendiente, lo agregamos antes de continuar
+            if buffer_node:
+                merged_nodes.append(buffer_node)
+                buffer_node = None
+            merged_nodes.append((node_id, node, depth))
+        elif depth == 4:
+            # Si es un subnodo ####
+            if buffer_node is None:
+                # Creamos un nuevo nodo agrupador con el título del padre ### como título base
+                parent = getattr(node, "parent", None)
+                if parent is not None:
+                    new_node = type(node)(
+                        title=parent.title,
+                        content=node.content,
+                        depth=3,
+                        parent=getattr(parent, "parent", None),
+                        page_number=getattr(node, "page_number", None),
+                    )
+                    buffer_node = (node_id, new_node, 3)
+            else:
+                # Si ya hay un buffer_node, agregamos el contenido
+                _, buffered_node, _ = buffer_node
+                buffered_node.content += "\n\n" + node.content
+
+    # Agrega el último agrupado si quedó uno pendiente
+    if buffer_node:
+        merged_nodes.append(buffer_node)
+
+    return merged_nodes
+
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def extract_statements(title: str, content: str, processor: StatementProcessor) -> Dict:
+def extract_statements(title: str, content: str, processor: StatementProcessor, page_number: int = None) -> Dict:
     """
     Extract and classify a statement from title and content.
 
@@ -191,6 +241,7 @@ def extract_statements(title: str, content: str, processor: StatementProcessor) 
             "category": response.category,
             "justification": response.justification,
             "synthesis": response.synthesis,
+            "page": page_number,
             "heading_path": title,
             "text_content": str(title + "\n" + content),
         }
@@ -202,6 +253,7 @@ def extract_statements(title: str, content: str, processor: StatementProcessor) 
             "justification": f"Error in processing: {str(e)}",
             "synthesis": "",
             "related_items": [],
+            "page": page_number,
             "heading_path": title,
             "text_content": content.strip(),
         }
@@ -211,7 +263,9 @@ def process_node(node_tuple, processor: StatementProcessor):
     """Process a single node."""
     try:
         node_id, node, depth = node_tuple
-        result = extract_statements(node.title, node.content, processor)
+        page_number = getattr(node, "page_number", None)
+        heading_path = build_heading_path(node)
+        result = extract_statements(heading_path, node.content, processor, page_number)
         return result
     except Exception as e:
         logger.error(f"Error processing node: {str(e)}")
@@ -300,6 +354,9 @@ def classify_statements(
     # Print sample node structure for debugging
     if nodes_to_process:
         logger.info(f"Node structure: {nodes_to_process}")
+    
+    # Preprocesamiento para agrupar nodos #### bajo ### si aplica
+    nodes_to_process = merge_subnodes_under_h3(nodes_to_process)
 
     processor = StatementProcessor()
 
