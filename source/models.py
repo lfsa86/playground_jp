@@ -5,6 +5,23 @@ import uuid
 from collections import deque
 from typing import Any, Callable, List, Tuple
 
+def build_heading_path_from_node(tree, node):
+    """
+    Reconstruye la ruta completa de encabezados desde el nodo raíz hasta el nodo actual.
+    
+    Args:
+        tree (DocumentTree): Árbol de nodos del documento.
+        node (ElementNode): Nodo actual.
+
+    Returns:
+        str: Ruta jerárquica como cadena unida con " > ".
+    """
+    path = []
+    while node is not None:
+        if node.title and node.title.lower().strip() != "root":
+            path.insert(0, node.title.strip())
+        node = tree.get_node(node.parent_id)
+    return " > ".join(path)
 
 class ElementNode:
     """
@@ -259,7 +276,7 @@ class ElementParser:
         """
         Initialize the parser with a regex pattern for markdown headings.
         """
-        self.heading_pattern = re.compile(r"^(#{1,2})\s+(.+)$")
+        self.heading_pattern = re.compile(r"^(#{1,6})\s+(.+)$")
 
     def parse_file(self, file):
         """
