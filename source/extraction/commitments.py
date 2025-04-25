@@ -5,7 +5,7 @@ import multiprocessing
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
-from typing import Dict
+from typing import List, Dict
 
 # Set multiprocessing start method to "spawn" before any other imports
 if __name__ == "__main__":
@@ -27,11 +27,12 @@ from pandas import DataFrame
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
-from ..schemas import Commitment
+from ..schemas import Commitment, MultipleCommitments
 
 # System prompt for commitment extraction
 SYSTEM_PROMPT = """
-Eres un asistente experto en análisis de documentos ambientales. Tu tarea es identificar y extraer compromisos ambientales de textos, clasificarlos y determinar sus características principales.
+Eres un asistente experto en análisis de documentos ambientales en Perú. Tu tarea es identificar y extraer **uno o más compromisos ambientales** de un texto dado. 
+Si encuentras más de un compromiso en el mismo bloque de texto, extrae cada uno por separado.
 """
 
 ANALYSIS_TEMPLATE = """
@@ -67,7 +68,7 @@ class ThreadSafeLLM:
                         temperature=0,
                     )
                     self._llm_instances[thread_id] = llm.with_structured_output(
-                        Commitment
+                        MultipleCommitments
                     )
                 except Exception as e:
                     logger.error(
@@ -97,49 +98,50 @@ class CommitmentExtractor:
     @retry(
         stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
     )
-    def process_row(self, row: DataFrame) -> Dict:
-        """
-        Process a single row of text and extract commitments.
 
-        Args:
-            row: Text content to analyze.
-
-        Returns:
-            Dictionary containing extracted commitment information.
-        """
+    def process_row(self, row: DataFrame) -> List[Dict]:
         try:
             prompt = self.prompt_template.format_messages(
                 system_prompt=SYSTEM_PROMPT,
                 texto=row["text_content"].values[0],
             )
             llm = self.llm_handler.get_llm()
-            response: Commitment = llm.invoke(prompt)
+            response_list: MultipleCommitments = llm.invoke(prompt)
 
-            result = {
-                "statement_index": row.index[0],
-                "titulo": row["heading_path"].values[0],
-                "summary": response.summary,
-                "componente_operativo": response.coa,
-                "componente_ambiental": response.caa,
-                "fase_aplicacion_del_compromiso": response.fase_aplicacion,
-                "frecuencia_de_reporte": response.frecuencia_reporte,
-                "text_content": row["text_content"].values[0],
-            }
+            results = []
+            for commitment in response_list.compromisos:
+                results.append({
+                    "statement_index": row.index[0],
+                    "titulo": row["heading_path"].values[0],
+                    "summary": commitment.summary,
+                    "componente_operativo": commitment.coa,
+                    "componente_ambiental": commitment.caa,
+                    "fase_aplicacion_del_compromiso": commitment.fase_aplicacion,
+                    "frecuencia_de_reporte": commitment.frecuencia_reporte,
+                    "ubicacion": commitment.ubicacion,
+                    "tematica": commitment.tematica,
+                    "dificultad_cumplimiento": commitment.dificultad_cumplimiento,
+                    "text_content": row["text_content"].values[0],
+                })
 
             with self._lock:
-                self.results.append(result)
+                self.results.extend(results)
 
-            return result
+            return results
 
         except Exception as e:
             logger.error(f"Error processing row: {str(e)}")
-            return {
+            return [{
                 "error": str(e),
                 "row_content": row["text_content"],
-            }
+            }]
 
     def save_results(self, df: DataFrame, output_path: str):
-        """Save results to multiple file formats."""
+        """Save results to multiple file formats with correct encoding for Spanish characters."""
+
+        # Sanitiza caracteres especiales (opcional pero recomendable)
+        df = df.applymap(lambda x: x.encode("utf-8", "replace").decode("utf-8") if isinstance(x, str) else x)
+
         output_files = {
             "extracted_commitments.parquet": lambda df: df.to_parquet(
                 f"{output_path}/extracted_commitments.parquet"
@@ -148,10 +150,10 @@ class CommitmentExtractor:
                 f"{output_path}/extracted_commitments.pkl"
             ),
             "extracted_commitments.csv": lambda df: df.to_csv(
-                f"{output_path}/extracted_commitments.csv"
+                f"{output_path}/extracted_commitments.csv", index=False, encoding="utf-8-sig"
             ),
             "extracted_commitments.xlsx": lambda df: df.to_excel(
-                f"{output_path}/extracted_commitments.xlsx"
+                f"{output_path}/extracted_commitments.xlsx", index=False, engine="xlsxwriter"
             ),
         }
 
@@ -194,21 +196,30 @@ class CommitmentExtractor:
                 with tqdm(total=len(futures), desc="Processing rows") as pbar:
                     for future in as_completed(futures):
                         try:
-                            result = future.result(timeout=60)  # Add timeout
+                            result_list = future.result(timeout=60)
+                            # Ya fueron añadidos a self.results dentro de process_row
                             pbar.update(1)
                         except TimeoutError:
                             logger.error(f"Timeout processing row {futures[future]}")
+                            pbar.update(1)
                         except Exception as e:
-                            logger.error(
-                                f"Error processing row {futures[future]}: {str(e)}"
-                            )
-                        finally:
-                            pbar.update(
-                                0
-                            )  # Ensure progress bar updates even on failure
+                            logger.error(f"Error processing row {futures[future]}: {str(e)}")
+                            pbar.update(1)
 
             # Create DataFrame from results
             responses_df = pd.DataFrame(self.results)
+            expected_columns = [
+                "statement_index", "titulo", "summary", "componente_operativo", 
+                "componente_ambiental", "fase_aplicacion_del_compromiso", 
+                "frecuencia_de_reporte", "ubicacion", "tematica", 
+                "dificultad_cumplimiento", "text_content"
+            ]
+
+            for col in expected_columns:
+                if col not in responses_df.columns:
+                    responses_df[col] = None
+
+            responses_df = responses_df[expected_columns]
             responses_df = responses_df.sort_values(by="statement_index")
 
             # Save results
