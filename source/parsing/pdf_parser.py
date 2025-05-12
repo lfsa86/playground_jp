@@ -50,7 +50,7 @@ class PDFParser:
                 page_text = page.markdown.strip()
                 if not page_text:
                     print(f"⚠️ Página {i+1} sin contenido detectable.")
-                full_text += f"{page_text}\n\n-----\n\n"
+                full_text += f"{page_text}\n\n-----\n\n\n"
 
             with raw_output_file.open("w", encoding="utf-8", errors="ignore") as f:
                 f.write(full_text)

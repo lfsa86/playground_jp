@@ -7,6 +7,7 @@ from source.clasification import classify_statements
 from source.extraction import CommitmentExtractor
 from source.parsing import HeadingParser, PDFParser
 
+
 import pandas as pd
 
 set_verbose(True)
@@ -17,22 +18,23 @@ def run_parser_only(file_path: Path):
     print("▶ Ejecutando solo el PARSER...")
     ocr_pdf_parser = PDFParser()
 
-    # Ahora devuelve una ruta, no el contenido
+    # Paso 1: generar el archivo RAW
     raw_md_path = ocr_pdf_parser.process_pdf(input_path=file_path)
 
-    heading_parser = HeadingParser()
-    # Leemos el contenido desde el archivo
-    file_md_content = raw_md_path.read_text(encoding="utf-8")
+    # Paso 2: leer contenido
+    raw_md_content = raw_md_path.read_text(encoding="utf-8")
 
-    # Normalizamos los encabezados a partir del contenido leído
-    fixed_md_content = heading_parser.normalize_headings(
-        file_name=file_path.stem, md_content=file_md_content
+    # Paso 3: normalizar headings con modo híbrido
+    heading_parser = HeadingParser()
+    final_md = heading_parser.normalize_headings(
+        file_name=file_path.stem,
+        md_content=raw_md_content
     )
 
-    # Guardamos el nuevo markdown con headings normalizados
+    # Paso 4: guardar
     md_output_path = raw_md_path.parent / f"{file_path.stem}.md"
-    md_output_path.write_text(fixed_md_content, encoding="utf-8")
-    print(f"✅ Archivo markdown generado en: {md_output_path}")
+    md_output_path.write_text(final_md, encoding="utf-8")
+    print(f"✅ Markdown estructurado guardado en: {md_output_path}")
 
 
 def run_parser_and_classifier(file_path: Path):

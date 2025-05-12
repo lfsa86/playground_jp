@@ -5,6 +5,29 @@ import multiprocessing
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
+import re
+
+def demote_table_headers(md_text: str) -> str:
+    """
+    Convierte encabezados Markdown que comienzan con 'Tabla' en texto plano destacado con negrita,
+    y agrega saltos de línea arriba y abajo para claridad visual.
+    """
+    lines = md_text.splitlines()
+    new_lines = []
+    pattern = re.compile(r"^(#{1,6})\s+(Tabla(?:\s+(Original|Rectificada))?\s[\d\.\s\(\)A-Za-zÁÉÍÓÚÑñ:]+)", re.IGNORECASE)
+
+    for i, line in enumerate(lines):
+        match = pattern.match(line)
+        if match:
+            titulo = match.group(2).strip()
+            new_lines.append("")  # línea vacía arriba
+            new_lines.append(f"**{titulo}**")  # título en negrita
+            new_lines.append("")  # línea vacía abajo
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines)
+
+
 
 # Set multiprocessing start method to "spawn" before any other imports
 if __name__ == "__main__":
@@ -44,14 +67,14 @@ Eres un asistente experto en reformatear documentos legales y técnicos, con un 
 
 1.  **Jerarquía Markdown:**  Organiza el texto utilizando encabezados Markdown (##, ###, ####, etc.) para representar la jerarquía lógica del documento. Asegúrate de que cada sección tenga un encabezado apropiado y que las subsecciones estén anidadas correctamente. Comienza la jerarquía en el nivel de encabezado 2.
 2.  **Formato de listas y tablas:** Cuando corresponda, utiliza listas (ordenadas y no ordenadas) y tablas para presentar información de manera clara y organizada. Formatea las tablas con encabezados y alineación apropiados.
-3.  **Claridad y concisión:** Reestructura las oraciones y párrafos para mejorar la legibilidad y la fluidez del texto, sin alterar su significado original.  Evita la redundancia y la ambigüedad.
-4.  **Respetar el contenido original:** No modifiques el contenido factual del documento. Tu objetivo es mejorar la estructura y la presentación, no alterar la información proporcionada.
-5.  **Consistencia:** Aplica un estilo consistente en todo el documento, incluyendo el uso de mayúsculas, minúsculas, puntuación y formato de listas y tablas.
-6. **énfasis a listas:** Si hay instrucciones, regulaciones o ítems enumerados, asegúrate de representarlos en un formato de lista con viñetas o numerados para que sean fáciles de identificar y entender.
-7. **énfasis a tablas:** Las tablas siempre deben incluir títulos claros y descriptivos.
-8. En tu respuesta solamente da el contenido del MD sin triple backtick (```)
-9. MANTEN EL CONTENIDO ORIGINAL SIN MODIFICARLO.
-10. EVITA REDUNDANCIAS AL MOMENTO DE TRANSCRIBIR.
+3.  **Respetar el contenido original:** No modifiques el contenido factual del documento. Tu objetivo es mejorar la estructura y la presentación, no alterar la información proporcionada.
+4.  **Consistencia:** Aplica un estilo consistente en todo el documento, incluyendo el uso de mayúsculas, minúsculas, puntuación y formato de listas y tablas.
+5. **énfasis a listas:** Si hay instrucciones, regulaciones o ítems enumerados, asegúrate de representarlos en un formato de lista con viñetas o numerados para que sean fáciles de identificar y entender.
+6. **énfasis a tablas:** Las tablas siempre deben incluir títulos claros y descriptivos.
+7. En tu respuesta solamente da el contenido del MD sin triple backtick (```)
+8. MANTEN EL CONTENIDO ORIGINAL SIN MODIFICARLO.
+9. EVITA REDUNDANCIAS AL MOMENTO DE TRANSCRIBIR.
+10. NO resumas, interpretes o completes el contenido. No omitas ninguna línea, celda o tabla, incluso si parecen repetidas, vacías o poco informativas.
 
 **Actúa como un asistente legal/técnico profesional.** Tu objetivo es producir documentos bien estructurados, fáciles de leer y que mantengan la integridad del contenido original.
 """
@@ -220,6 +243,8 @@ class HeadingParser:
                 normalized_pages.append(self.results.get(i, pages[i]))
 
             normalized_content = self.page_separator.join(normalized_pages)
+
+            normalized_content = demote_table_headers(normalized_content)
 
             try:
                 output_file = os.path.join(output_path, f"{file_name}.md")
