@@ -27,6 +27,51 @@ def demote_table_headers(md_text: str) -> str:
             new_lines.append(line)
     return "\n".join(new_lines)
 
+def protect_sensitive_blocks(text: str) -> str:
+    """
+    Añade marcas de protección alrededor de tablas, listas enumeradas o texto con estilo técnico
+    para que no sea modificado por el modelo.
+    """
+    lines = text.splitlines()
+    protected = []
+    in_table = False
+    for line in lines:
+        if line.strip().startswith("|") and line.strip().endswith("|"):
+            if not in_table:
+                protected.append("<PROTECTED_BLOCK>")
+                in_table = True
+            protected.append(line)
+        elif in_table and not line.strip().startswith("|"):
+            protected.append("</PROTECTED_BLOCK>")
+            protected.append(line)
+            in_table = False
+        else:
+            protected.append(line)
+    if in_table:
+        protected.append("</PROTECTED_BLOCK>")
+    return "\n".join(protected)
+
+def restore_protected_blocks(text: str, original: str) -> str:
+    """
+    Reemplaza los bloques marcados como <PROTECTED_BLOCK>...</PROTECTED_BLOCK>
+    con el contenido original correspondiente (línea por línea).
+    """
+    original_lines = original.splitlines()
+    result_lines = []
+    i = 0
+    while i < len(original_lines):
+        if "<PROTECTED_BLOCK>" in original_lines[i]:
+            protected_block = []
+            i += 1
+            while i < len(original_lines) and "</PROTECTED_BLOCK>" not in original_lines[i]:
+                protected_block.append(original_lines[i])
+                i += 1
+            result_lines.extend(protected_block)
+            i += 1  # Saltar </PROTECTED_BLOCK>
+        else:
+            result_lines.append(original_lines[i])
+            i += 1
+    return "\n".join(result_lines)
 
 
 # Set multiprocessing start method to "spawn" before any other imports
@@ -154,27 +199,33 @@ class HeadingParser:
     def process_page(self, page_content: str, page_index: int) -> str:
         """
         Process a single page of markdown content and normalize headings.
-
-        Args:
-            page_content: Markdown content to normalize.
-            page_index: Index of the page in the document.
-
-        Returns:
-            Normalized page content.
+        Adds protection around sensitive blocks like tables before passing to LLM.
         """
         try:
             if not page_content.strip():
                 return page_content
 
+            # 👉 Paso 1: proteger contenido sensible
+            protected_content = protect_sensitive_blocks(page_content)
+
+            # 👉 Paso 2: preparar el prompt
             prompt = self.prompt_template.format_messages(
                 system_prompt=system_prompt,
-                content=page_content,
+                content=protected_content,
             )
+
+            # 👉 Paso 3: ejecutar el modelo
             llm = self.llm_handler.get_llm()
             response = llm.invoke(prompt)
 
-            normalized_content = response.content
+            # 👉 Paso 4: restaurar el contenido sensible original
+            if hasattr(response, "content") and response.content:
+                normalized_content = restore_protected_blocks(response.content, protected_content)
+            else:
+                logger.warning(f"Empty response at page {page_index}")
+                normalized_content = page_content
 
+            # 👉 Guardar resultado
             with self._lock:
                 self.results[page_index] = normalized_content
 
@@ -183,6 +234,7 @@ class HeadingParser:
         except Exception as e:
             logger.error(f"Error processing page {page_index}: {str(e)}")
             return page_content  # Return original content on error
+
 
     def normalize_headings(
         self, file_name: str, md_content: str, output_dir="data/processed/"
