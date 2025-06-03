@@ -40,16 +40,24 @@ def run_parser_only(file_path: Path):
 def run_parser_and_classifier(file_path: Path):
     print("▶ Ejecutando PARSER + CLASSIFIER...")
     ocr_pdf_parser = PDFParser()
-    file_md_content = ocr_pdf_parser.process_pdf(input_path=file_path)
 
+    # Paso 1: obtener la ruta al archivo markdown raw
+    raw_md_path = ocr_pdf_parser.process_pdf(input_path=file_path)
+
+    # Paso 2: leer el contenido del archivo .md
+    raw_md_content = raw_md_path.read_text(encoding="utf-8")
+
+    # Paso 3: normalizar headings
     heading_parser = HeadingParser()
     fixed_md_content = heading_parser.normalize_headings(
-        file_name=file_path.stem, md_content=file_md_content
+        file_name=file_path.stem,
+        md_content=raw_md_content
     )
 
+    # Paso 4: clasificar enunciados
     df = classify_statements(file_name=file_path.stem, md_content=fixed_md_content)
 
-    # Guardar ambos resultados
+    # Paso 5: guardar resultados
     md_output_path = Path(f"data/processed/{file_path.stem}.md")
     md_output_path.write_text(fixed_md_content, encoding="utf-8")
 
@@ -63,19 +71,28 @@ def run_parser_and_classifier(file_path: Path):
 def run_full_pipeline(file_path: Path):
     print("▶ Ejecutando PIPELINE COMPLETO...")
     ocr_pdf_parser = PDFParser()
-    file_md_content = ocr_pdf_parser.process_pdf(input_path=file_path)
 
+    # Paso 1: obtener ruta del markdown RAW
+    raw_md_path = ocr_pdf_parser.process_pdf(input_path=file_path)
+
+    # Paso 2: leer contenido del markdown RAW
+    raw_md_content = raw_md_path.read_text(encoding="utf-8")
+
+    # Paso 3: normalizar encabezados
     heading_parser = HeadingParser()
     fixed_md_content = heading_parser.normalize_headings(
-        file_name=file_path.stem, md_content=file_md_content
+        file_name=file_path.stem,
+        md_content=raw_md_content
     )
 
+    # Paso 4: clasificar enunciados
     df = classify_statements(file_name=file_path.stem, md_content=fixed_md_content)
 
+    # Paso 5: extraer compromisos
     commitment_extractor = CommitmentExtractor()
     df = commitment_extractor.extract(file_name=file_path.stem, df=df)
 
-    # Guardar todos los resultados
+    # Paso 6: guardar resultados
     md_output_path = Path(f"data/processed/{file_path.stem}.md")
     md_output_path.write_text(fixed_md_content, encoding="utf-8")
 
