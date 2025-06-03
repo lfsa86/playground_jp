@@ -18,24 +18,49 @@ class Statement(BaseModel):
 
 
 class Commitment(BaseModel):
-    """Model for environmental commitment classification."""
+    """Modelo para la clasificación detallada de compromisos ambientales."""
 
     summary: str = Field(
-        description="Resumen del explicativo del compromiso"
+        description="Resumen breve, claro y específico del compromiso ambiental declarado por el titular del proyecto. Evita frases genéricas."
     )
-    coa: Optional[str] = Field(None, description="Componente operativo asociado")
+    coa: Optional[str] = Field(
+        None,
+        description="Componente operativo del proyecto al que se refiere el compromiso. Ejemplos: taller de camiones, depósito de desmonte, planta de cal, planta de lixiviación, toma de agua, PTARD."
+    )
     caa: Optional[str] = Field(
-        None, description="Componente ambiental asociado (aire, agua, ruido, etc)"
+        None,
+        description="Componente ambiental afectado o protegido por el compromiso. Ejemplos: aire, agua superficial, agua subterránea, suelo, biodiversidad, ruido, paisaje, etc."
     )
     fase_aplicacion: Optional[str] = Field(
         None,
-        description="Fase de aplicacion del compromiso (construccion, operacion, cierre, todas, etc)",
+        description="Fase del proyecto donde se aplica el compromiso. Puede ser: construcción, operación, cierre, post cierre o todas las fases."
     )
-    frecuencia_reporte: Optional[str] = Field(None, description="Frecuencia de reporte")
+    frecuencia_reporte: Optional[str] = Field(
+        None,
+        description="Frecuencia con la que se debe reportar el cumplimiento del compromiso. Ejemplos: mensual, trimestral, anual, antes del inicio de obras, etc."
+    )
+    ubicacion: Optional[str] = Field(
+        None,
+        description="Lugar geográfico o infraestructura asociada al compromiso (por ejemplo: Mina, Línea de transmisión, Puerto, Todas las ubicaciones, etc.)"
+    )
+    tematica: Optional[str] = Field(
+        None,
+        description="Temática asociada al compromiso. Puede incluir temas como diseño de componentes operativos, eficiencia energética, monitoreo, etc."
+    )
+    dificultad_cumplimiento: Optional[str] = Field(
+        None,
+        description="Nivel de dificultad del cumplimiento: puede ser rutina operativa o requerir coordinación y servicios especializados. Catalógalo como Sencillo, Moderado o Complejo."
+    )
+    indicadores_verificacion: Optional[str] = Field(
+        None,
+        description="Indicadores, métricas o KPIs asociados al compromiso, que permitan su seguimiento o verificación objetiva."
+    )
+
 
 class MultipleCommitments(BaseModel):
-    """Contenedor de múltiples compromisos extraídos de un solo texto."""
+    """Modelo para múltiples compromisos extraídos desde un mismo enunciado."""
 
     compromisos: List[Commitment] = Field(
-        ..., description="Lista de compromisos identificados en el bloque de texto"
+        default_factory=list,
+        description="Lista de compromisos identificados en un bloque de texto."
     )

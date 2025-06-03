@@ -33,6 +33,21 @@ from ..schemas import MultipleCommitments  # Updated schema
 SYSTEM_PROMPT = """
 Eres un asistente experto en análisis de documentos ambientales en Chile. Tu tarea es identificar y extraer **uno o más compromisos ambientales** de un texto dado. 
 Si encuentras más de un compromiso en el mismo bloque de texto, extrae cada uno por separado.
+
+Además, para cada compromiso identificado, **sugiere uno o más indicadores de verificación**. Estos pueden ser métricas, frecuencias de monitoreo, evidencias físicas u otros elementos observables que permitan comprobar su cumplimiento.
+
+Evita repetir frases del texto y evita dejar campos vacíos. Si el texto es demasiado general, realiza inferencias responsables pero no alucines hechos inexistentes.
+
+Formato de salida:
+- summary
+- coa
+- caa
+- fase_aplicacion
+- frecuencia_reporte
+- ubicacion
+- tematica
+- dificultad_cumplimiento
+- indicadores_verificacion (sugeridos por ti como experto)
 """
 
 ANALYSIS_TEMPLATE = """
@@ -125,6 +140,10 @@ class CommitmentExtractor:
                     "componente_ambiental": commitment.caa,
                     "fase_aplicacion_del_compromiso": commitment.fase_aplicacion,
                     "frecuencia_de_reporte": commitment.frecuencia_reporte,
+                    "ubicacion": commitment.ubicacion,
+                    "tematica": commitment.tematica,
+                    "dificultad_cumplimiento": commitment.dificultad_cumplimiento,
+                    "indicadores_verificacion": commitment.indicadores_verificacion,
                     "text_content": row["text_content"].values[0],
                 }
 
