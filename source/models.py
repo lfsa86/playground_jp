@@ -179,8 +179,8 @@ class DocumentTree:
             if node and node.title != "root":
                 path.append((current_id, node.title))
             current_id = node.parent_id if node else None
-            path.reverse()
-            return path
+        path.reverse()
+        return path
 
     def to_dict(self):
         """
@@ -209,8 +209,8 @@ class DocumentTree:
         tree.nodes = {}
         for node_id, node_data in tree_dict["nodes"].items():
             tree.nodes[node_id] = ElementNode.from_dicts(node_data)
-            tree.root_node = tree.nodes[tree_dict["root_id"]]
-            return tree
+        tree.root_node = tree.nodes[tree_dict["root_id"]]
+        return tree
 
     def save_to_json(self, filename):
         """
@@ -388,7 +388,7 @@ class ElementIterator:
                 return
 
             # Emitir el nodo actual (a menos que sea el nodo raíz y skip_root=True)
-            if not (skip_root and node.title == "Root"):
+            if not (skip_root and node.title.lower() == "root"):
                 yield current_node_id, node, depth
 
             # Recorrer recursivamente cada hijo
@@ -412,9 +412,9 @@ class ElementIterator:
         """
         if start_node_id is None:
             start_node_id = self.tree.root_node.id
-            queue = deque([(start_node_id, 0)])
-            visited = set()
-            while queue:
+        queue = deque([(start_node_id, 0)])
+        visited = set()
+        while queue:
                 node_id, depth = queue.popleft()
                 if node_id in visited:
                     continue
@@ -512,7 +512,8 @@ class DocumentProcessor:
             "<body>",
         ]
         iterator = ElementIterator(tree)
-        for node_id, node, depth in iterator.iterate_depth_first():
+        for node_id, node, depth in iterator.iterate_depth_first(skip_root=True):
+            level = node.level if 1 <= node.level <= 6 else 2
             html.append(f"<h{node.level}>{node.title}</h{node.level}>")
             if node.content:
                 content_html = node.content.replace("\n", "<br>\n")
