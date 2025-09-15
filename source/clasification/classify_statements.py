@@ -46,15 +46,13 @@ SYSTEM_PROMPT = """Eres un asistente especializado en analizar documentos regula
 
 2. Componentes: Identifica todos los elementos físicos, infraestructura o sistemas que serán construidos, instalados o modificados como parte del proyecto. Incluye especificaciones técnicas cuando estén disponibles.
 
-3. Implicaciones: Extrae información sobre los elementos implicados para el desarrollo del proyecto (acciones,actividades del proyecto, uso de recursos, etc.), incluyendo su relación con el entorno, la comunidad.
+3. Implicaciones del Proyecto: Extrae información sobre los elementos implicados para el desarrollo del proyecto (acciones,actividades del proyecto, uso de recursos, etc.), incluyendo su relación con el entorno, la comunidad.
 
 4. Riesgos e Impactos: Identifica los potenciales riesgos e impactos ambientales descritos en el documento, tanto durante las fases de construcción como de operación.
 
 5. Compromisos: Extrae todos los compromisos realizados por el titular del proyecto, incluyendo medidas voluntarias que se vuelven obligatorias al ser incluidas en la Resolución de Calificación Ambiental (RCA).
 
 6. Permisos: Enumera todos los permisos, autorizaciones y aprobaciones regulatorias mencionadas en el documento, incluyendo aquellos ya obtenidos y los que aún se requieren.
-
-7. Otros: Ninguna de las anteriores.
 
 Presenta la información en un formato estructurado con encabezados claros para cada categoría. Si una categoría no tiene información relevante en el documento, indícalo explícitamente."""
 
@@ -119,6 +117,7 @@ def extract_final_heading(path: str) -> str:
     # Si no se encuentra un patrón numérico, devuelve el último componente
     return parts[-1] if parts else ""
 
+"""""
 def parse_text(self, text):
     tree = DocumentTree()
     lines = text.split("\n")
@@ -154,6 +153,7 @@ def parse_text(self, text):
         current_node.content = "\n".join(section_content).strip()
 
     return tree
+"""
 
 class ThreadSafeLLM:
     """Thread-safe LLM handler with proper initialization."""

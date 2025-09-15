@@ -1,4 +1,32 @@
-"""Module for normalizing headings in markdown documents using LLM."""
+"""
+fix_headings.py — Normalización de encabezados Markdown con LLM (paralelo, robusto).
+
+Objetivo:
+- Reestructurar y normalizar encabezados (a partir de ##), listas y tablas en contenido Markdown,
+  manteniendo el contenido factual intacto y mejorando la legibilidad.
+
+Componentes:
+- get_optimal_thread_count(): determina hilos óptimos (min(32, 2*CPU)).
+- ThreadSafeLLM: gestor thread-safe de instancias de chat model (una por hilo).
+- HeadingParser:
+    - process_page(page_content, page_index): normaliza una “página” con LLM (reintentos y logs).
+    - normalize_headings(file_name, md_content, output_dir): divide por separador, procesa en paralelo,
+      reensambla en orden y persiste en data/processed/<file_name>/<file_name>.md. Retorna el markdown final.
+
+Flujo:
+1) split por separador de páginas (self.page_separator).
+2) parallel map con ThreadPoolExecutor → process_page().
+3) merge ordenado por índice; fallback a original en errores.
+4) write .md en carpeta de salida; cleanup de instancias LLM.
+
+Requisitos:
+- LangChain, Tenacity, TQDM; credenciales del provider LLM (google_genai).
+- GRPC_FORK_SUPPORT_ENABLED=1 (evita issues con gRPC y forking).
+
+Notas:
+- Asegura alinear el separador de páginas con el parser que genera el markdown (p. ej., <!-- Página N -->).
+- Controla max_workers si hay límites de cuota del LLM.
+"""
 
 import logging
 import multiprocessing

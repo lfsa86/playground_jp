@@ -7,7 +7,7 @@ class Statement(BaseModel):
     """Model for environmental statement classification."""
 
     category: str = Field(
-        description="Generalidades, Implicaciones del Proyecto, Actividades, Riesgos e Impactos, Compromisos, Permisos"
+        description="Generalidades, Componentes, Implicaciones del Proyecto, Riesgos e Impactos, Compromisos, Permisos"
     )
     justification: str = Field(
         description="Explicación breve del motivo de la clasificación."

@@ -27,7 +27,7 @@ from pandas import DataFrame
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
-from ..schemas import Commitment, MultipleCommitments
+from ..schemas import MultipleCommitments
 
 # System prompt for commitment extraction
 SYSTEM_PROMPT = """
@@ -46,7 +46,12 @@ NO ALUCINES
 
 def get_optimal_thread_count():
     """Calculate optimal thread count based on CPU cores."""
-    return min(32, ((multiprocessing.cpu_count() * 2) - 10))
+    try:
+        cores = multiprocessing.cpu_count()
+        # 2x cores menos un margen, y con límites seguros
+        return max(4, min(32, (cores * 2) - 10))
+    except Exception:
+        return 4
 
 
 class ThreadSafeLLM:
@@ -95,10 +100,8 @@ class CommitmentExtractor:
         self.results = []
         self._lock = threading.Lock()
 
-    @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
-    )
-
+    
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def process_row(self, row: DataFrame) -> List[Dict]:
         try:
             prompt = self.prompt_template.format_messages(
@@ -133,7 +136,7 @@ class CommitmentExtractor:
             logger.error(f"Error processing row: {str(e)}")
             return [{
                 "error": str(e),
-                "row_content": row["text_content"],
+                "row_content": row["text_content"].values[0] if "text_content" in row else None,
             }]
 
     def save_results(self, df: DataFrame, output_path: str):
