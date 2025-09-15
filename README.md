@@ -22,3 +22,8 @@ Sigue estos pasos para configurar el entorno de desarrollo:
    # .venv\Scripts\activate  # Windows
    ```
 ¡Tu entorno está listo para usar!
+
+4. **Corre main.py**
+Paso 1: Define la ruta del documento que en main.py
+Paso 2: d "C:\Github\NaturAI Modulo 1\Identificacion-de-Compromisos"
+uv run python -m source.main
