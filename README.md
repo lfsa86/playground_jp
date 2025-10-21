@@ -16,10 +16,10 @@ Sigue estos pasos para configurar el entorno de desarrollo:
 
 3. **Crea y activa el entorno virtual**:
    ```bash
-   uv sync
-   uv venv --python 3.12.4
+      uv venv --python 3.12.4
    source .venv/bin/activate  # Unix/macOS
    # .venv\Scripts\activate  # Windows
+   uv sync
    ```
 4. **Corre el codigo
    ```bash
