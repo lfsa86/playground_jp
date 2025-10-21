@@ -12,7 +12,7 @@ set_verbose(True)
 load_dotenv()
 
 # Ruta del archivo
-file_path = Path("data/raw/Quellaveco_ITS_PMA_Cap11Texto.pdf")
+file_path = Path("data/raw/Aunor/2023-81-T-ITS-00349-2022/139611-2022-57807-03_Tortuga_Capítulo_III_Descripción_del_ITSFolio063-0311.pdf")
 file_name = file_path.stem
 
 # Procesar PDF y obtener markdown completo
