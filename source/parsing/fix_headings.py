@@ -57,7 +57,7 @@ except Exception as e:
 
 try:
     from langchain.chat_models import init_chat_model
-    from langchain.prompts import ChatPromptTemplate
+    from langchain_core.prompts import ChatPromptTemplate
     from tenacity import retry, stop_after_attempt, wait_exponential
     from tqdm import tqdm
 except ImportError as e:

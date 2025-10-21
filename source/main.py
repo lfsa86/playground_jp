@@ -1,6 +1,6 @@
 from pathlib import Path
 from dotenv import load_dotenv
-from langchain.globals import set_verbose
+from langchain_core.globals import set_verbose
 import pandas as pd
 
 from source.clasification import classify_statements

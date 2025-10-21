@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Union
 import fitz  # PyMuPDF
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
 from PIL import Image
 from tqdm import tqdm
 
