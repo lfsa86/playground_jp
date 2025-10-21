@@ -27,4 +27,5 @@ dependencies = [
     "matplotlib>=3.10.1",
     "seaborn>=0.13.2",
     "vizro>=0.1.34",
+    "xlsxwriter>=3.2.9"
 ]

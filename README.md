@@ -23,6 +23,8 @@ Sigue estos pasos para configurar el entorno de desarrollo:
    ```
 4. **Corre el codigo
    ```bash
+   Paso 1: Define la ruta del documento que en main.py
+   Paso 2: d "C:\Github\NaturAI Modulo 1\Identificacion-de-Compromisos"
    uv run python -m source.main
    ```  
 ¡Tu entorno está listo para usar!
