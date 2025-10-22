@@ -1,29 +1,36 @@
-"""Module for parsing PDF files using Mistral OCR."""
+"""Module for parsing PDF files using Mistral OCR (mejorado)."""
+
+from __future__ import annotations
 
 import os
 import re
+import time
 from pathlib import Path
-from typing import Dict, Union
+from typing import Any, Dict, Union, List
 
 from dotenv import load_dotenv
-from mistralai import Mistral
+
+try:
+    from mistralai import Mistral
+except ImportError as e:
+    raise ImportError("Falta instalar 'mistralai'. Ejecuta: pip install mistralai") from e
 
 load_dotenv()
 
-def segmentar_por_nodos_heading(md_text: str) -> Dict[str, Dict[str, str]]:
+# =========================================================
+# Utilidad: segmentación por encabezados numerados
+# =========================================================
+def segmentar_por_nodos_heading(md_text: str) -> Dict[str, Dict[str, Any]]:
     """
-    Segmenta el markdown en nodos temáticos detectando encabezados tipo 11.1.1, 11.1.1.1, etc.
-    
-    Retorna un diccionario con claves como '11.1.1.1' y valores que contienen:
-    - 'titulo': Título de la sección
-    - 'contenido': Markdown correspondiente
-    - 'capitulo': Primer número (ej: '11')
-    - 'subseccion': ID completo (ej: '11.1.1.1')
-    - 'nivel': cantidad de niveles numéricos (3 o más)
-    """
-    pattern = re.compile(r"###\s+((\d+\.\d+\.\d+(?:\.\d+)*))\s+(.*)")
+    Segmenta el markdown en nodos temáticos detectando encabezados tipo:
+    ## 11.1, ### 11.1.1, #### 11.1.1.1, etc.
 
-    nodos = {}
+    Retorna un dict con claves '11.1.1.1' y valores:
+      - 'titulo', 'contenido', 'capitulo', 'subseccion', 'nivel'
+    """
+    pattern = re.compile(r"^#{2,6}\s+((\d+(?:\.\d+)+))\s+(.*)$", re.MULTILINE)
+
+    nodos: Dict[str, Dict[str, Any]] = {}
     matches = list(pattern.finditer(md_text))
 
     for i, match in enumerate(matches):
@@ -32,191 +39,260 @@ def segmentar_por_nodos_heading(md_text: str) -> Dict[str, Dict[str, str]]:
         niveles = subseccion.split(".")
         capitulo = niveles[0]
         nivel = len(niveles)
-
         inicio = match.end()
-        fin = matches[i+1].start() if i+1 < len(matches) else len(md_text)
-
+        fin = matches[i + 1].start() if i + 1 < len(matches) else len(md_text)
         contenido = md_text[inicio:fin].strip()
         nodos[subseccion] = {
             "titulo": titulo,
             "contenido": contenido,
             "capitulo": capitulo,
             "subseccion": subseccion,
-            "nivel": nivel
+            "nivel": nivel,
         }
 
     return nodos
 
+
+# =========================================================
+# PDF → Markdown con Mistral OCR
+# =========================================================
 class PDFParser:
-    """A class to handle PDF parsing operations using Mistral OCR."""
+    """Parsea PDF con Mistral OCR y genera Markdown por todo el documento."""
 
     def __init__(self) -> None:
-        """Initialize PDFParser instance."""
-        pass
+        self.api_key = os.getenv("MISTRAL_API_KEY")
+        if not self.api_key:
+            raise RuntimeError("No se encontró MISTRAL_API_KEY en el entorno (.env).")
+        self.client = Mistral(api_key=self.api_key)
+
+        # Heurísticas/regex usados en limpieza
+        self.re_toc_line = re.compile(r"^\s*\d+(?:\.\d+)+\s+.+?\.{2,}\s*\$?\d+\s*$")
+        self.re_num_heading = re.compile(r"^(?:#+\s*)?(\d+(?:\.\d+)+)\.?\s+(.*)$")
+        self.re_alpha_item = re.compile(r"^[A-Z]\.\s+.+$")
+        self.re_hash_heading = re.compile(r"^#{1,6}\s+.+$")
+        self.re_dup_numeral = re.compile(r"(\d+(?:\.\d+)+\.)\s+\1")  # “3.3.8.7. 3.3.8.7.” -> uno
+        self.re_inline_heading_in_bold = re.compile(r"^\*+\s*(#{1,6}\s+.+?)\s*\*+\s*$")
+
+    # ---------------- TOC detection mejorado ----------------
+    def _looks_like_toc(self, lines: List[str]) -> bool:
+        """
+        Detecta páginas de TOC con varias heurísticas:
+        - ≥4 líneas con patrón “num ... ..... pág”
+        - o presencia de “ÍNDICE” + ≥2 líneas patrón
+        - o densidad alta de puntos suspensivos con números al final.
+        """
+        norm = [self._strip_md_markup(ln) for ln in lines]
+        dots_lines = sum(1 for ln in norm if re.search(r"\.{2,}\s*\d+\s*$", ln))
+        numdot_lines = sum(1 for ln in norm if self.re_toc_line.match(ln))
+        has_indice = any("indice" in ln.lower() or "índice" in ln.lower() for ln in norm)
+
+        if numdot_lines >= 4:
+            return True
+        if has_indice and numdot_lines >= 2:
+            return True
+        if dots_lines >= 6 and numdot_lines >= 2:
+            return True
+        return False
+
+    # ---------------- Artefactos/basura ----------------
+    @staticmethod
+    def _clean_artifacts(line: str) -> bool:
+        if re.search(r"\bEPISAMIL\b", line, re.IGNORECASE):
+            return False
+        if re.match(r"#\s*Atkins[Ré]alis", line, re.IGNORECASE):
+            return False
+        if re.match(r"#\s*FOLIO", line, re.IGNORECASE):
+            return False
+        return True
 
     @staticmethod
-    def process_pdf(
-        input_path: Union[str, Path], output_dir: Union[str, Path] = "data/processed"
-    ) -> Dict[str, str]:
-        """Process PDF file using Mistral OCR and return the combined content in markdown format.
+    def _strip_md_markup(s: str) -> str:
+        """Quita **, __, #, espacios extras para detección robusta."""
+        s = re.sub(r"[*_`]+", "", s)
+        s = re.sub(r"^#{1,6}\s*", "", s)
+        return s.strip()
 
-        Args:
-            input_path: Path to the PDF file, can be string or Path object.
-            output_dir: Directory path where processed files will be saved (default: 'data/processed').
-
-        Returns:
-            Dictionary containing:
-                - file_name: Name of the processed file (without extension)
-                - md_text: Combined markdown content from all pages
-
-        Raises:
-            FileNotFoundError: If the input PDF file doesn't exist.
-            MistralError: If OCR processing fails.
-            OSError: If output directory creation fails.
+    # ---------------- Normalización de líneas ----------------
+    def _format_heading_or_text(self, stripped: str) -> str:
         """
-        # Convert paths to Path objects
-        pdf_path = Path(input_path) if isinstance(input_path, str) else input_path
-        output_path = Path(output_dir) if isinstance(output_dir, str) else output_dir
+        Reglas:
+        - Encabezado numérico -> Hx según profundidad: 1->##, 2->###, 3->####, 4->#####, 5->######.
+        - “CAPÍTULO X” -> # CAPÍTULO X
+        - Segunda línea tipo “DESCRIPCIÓN …” -> ## DESCRIPCIÓN …
+        - Items “A. Texto”/“B. Texto” -> bullet: "- A. Texto" (no “1.”).
+        - Si venía “**### 3.1 …**” -> quitar negritas, dejar “### 3.1 …”.
+        """
+        # Quitar posibles envolturas en ** para headings (evita **### …**)
+        m_bold_head = self.re_inline_heading_in_bold.match(stripped)
+        if m_bold_head:
+            stripped = m_bold_head.group(1).strip()
 
-        # Create full output path including file stem
-        file_output_path = output_path / pdf_path.stem
+        # CAPÍTULO X
+        if re.match(r"^(cap[ií]tulo)\s+[ivx\d]+", stripped, re.IGNORECASE):
+            return f"# {self._strip_md_markup(stripped)}"
 
-        # Verify input file exists
+        # “DESCRIPCIÓN DEL INFORME ...” (cuando viene inmediatamente tras CAPÍTULO)
+        if re.match(r"^(descripci[oó]n)\b", stripped, re.IGNORECASE):
+            return f"## {self._strip_md_markup(stripped)}"
+
+        # Encabezado con numeral (con/sin #)
+        m_num = self.re_num_heading.match(stripped)
+        if m_num:
+            numeracion = m_num.group(1)
+            titulo = m_num.group(2).strip()
+            niveles = numeracion.rstrip(".").split(".")
+            depth = max(1, min(5, len(niveles)))  # cap en 5 -> hasta ######
+            hashes = "#" * (depth + 1)           # 1->##, 2->###, 3->####, 4->#####, 5->######
+            return f"{hashes} {numeracion}. {titulo}"
+
+        # “A. Texto” / “B. Texto” -> bullet plano (conserva letra)
+        if self.re_alpha_item.match(stripped):
+            return f"- {stripped}"
+
+        # Si ya venía como heading con #, devuélvelo igual (pero sin duplicar **)
+        if self.re_hash_heading.match(stripped):
+            return stripped
+
+        return stripped
+
+    def _normalize_page_lines(self, page_lines: List[str]) -> str:
+        """
+        Ensambla el contenido de la página preservando tablas,
+        normaliza encabezados y arregla duplicaciones de numerales.
+        """
+        inside_table = False
+        buffer: List[str] = []
+        out: List[str] = []
+
+        def flush_buffer():
+            nonlocal buffer, out
+            if buffer:
+                out.append("\n".join(buffer))
+                buffer = []
+
+        for raw in page_lines:
+            if not self._clean_artifacts(raw):
+                continue
+
+            line = raw.rstrip("\n")
+            stripped = line.strip()
+
+            # Mantener tablas intactas
+            if stripped.startswith("|") and "|" in stripped:
+                if not inside_table:
+                    flush_buffer()
+                    inside_table = True
+                out.append(line)
+                continue
+            elif inside_table and not stripped.startswith("|"):
+                inside_table = False
+
+            # Normalización de encabezados / texto
+            formatted = self._format_heading_or_text(stripped)
+
+            # Arreglo de duplicaciones de numerales en headings
+            if formatted.startswith("#"):
+                formatted = self.re_dup_numeral.sub(r"\1", formatted)
+
+            if formatted != stripped:
+                flush_buffer()
+                out.append(formatted)
+            else:
+                buffer.append(line)
+
+        flush_buffer()
+        page_body = "\n".join(out).strip()
+
+        # Limpieza final: si quedaron negritas arropando hashes (casos raros)
+        page_body = re.sub(r"\*\s*(#{2,6}\s+)", r"\1", page_body)
+        page_body = re.sub(r"(#{2,6}\s+[0-9.]+\.)\s+\1", r"\1", page_body)  # doble numeral exacto
+
+        return page_body
+
+    # ---------------- Orquestación ----------------
+    def _poll_until_ready(self, file_id: str, timeout_s: int = 120) -> None:
+        time.sleep(0.5)
+
+    def process_pdf(
+        self, input_path: Union[str, Path], output_dir: Union[str, Path] = "data/processed"
+    ) -> Dict[str, Any]:
+        """
+        Procesa el PDF con Mistral OCR y retorna:
+          - file_name
+          - md_text (con <!-- Página N -->)
+          - nodos (índice por encabezados numerados)
+          - output_path (ruta del .md)
+        """
+        pdf_path = Path(input_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
-        # Create output directory if it doesn't exist
-        file_output_path.mkdir(parents=True, exist_ok=True)
+        output_path = Path(output_dir) / pdf_path.stem
+        output_path.mkdir(parents=True, exist_ok=True)
+        output_file = output_path / f"{pdf_path.stem}.md"
 
-        # Generate output filename
-        output_file = file_output_path / f"{pdf_path.stem}.md"
-
-        # Initialize Mistral client
-        client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
-
-        try:
-            # Upload PDF file
-            with pdf_path.open("rb") as pdf_file:
-                uploaded_pdf = client.files.upload(
-                    file={
-                        "file_name": pdf_path.name,
-                        "content": pdf_file,
-                    },
-                    purpose="ocr",
-                )
-
-            # Get signed URL for processing
-            signed_url = client.files.get_signed_url(file_id=uploaded_pdf.id)
-
-            # Process document with OCR
-            ocr_response = client.ocr.process(
-                model="mistral-ocr-latest",
-                document={
-                    "type": "document_url",
-                    "document_url": signed_url.url,
-                },
+        # 1) Subir PDF
+        with pdf_path.open("rb") as f:
+            uploaded = self.client.files.upload(
+                file={"file_name": pdf_path.name, "content": f},
+                purpose="ocr",
             )
 
-            # Palabras clave contextuales
-            componentes_tematicos = [
-                "calidad de aire", "ruido", "suelos", "agua", "efluentes", "residuos",
-                "biodiversidad", "flora", "fauna", "población", "comunidad", "paisaje"
-            ]
-            subtemas = ["objetivo", "condiciones", "medidas", "etapa", "actividad"]
-            
-            # Combine markdown content from all pages
-            combined_md_content = ""
-            for i, page in enumerate(ocr_response.pages, start=1):
-                lines = page.markdown.splitlines()
+        # 2) URL firmada
+        signed = self.client.files.get_signed_url(file_id=uploaded.id)
+        self._poll_until_ready(uploaded.id)
 
-                # Detectar si esta página parece una tabla de contenido
-                toc_like_lines = sum(
-                    1 for line in lines
-                    if re.match(r'^\s*\d+(\.\d+)+\s+.*\.+\s*\$?\d', line)
-                )
-                if toc_like_lines >= 5:
-                    continue  # ❌ saltar esta página (es muy probable que sea tabla de contenido)
+        # 3) Ejecutar OCR
+        ocr_response = self.client.ocr.process(
+            model="mistral-ocr-latest",
+            document={"type": "document_url", "document_url": signed.url},
+        )
 
-                # Si no es tabla de contenido, seguimos procesando normalmente
-                buffer = ""
-                inside_table = False
+        combined_blocks: List[str] = []
+        toc_seen = False  # si detectamos que una página es TOC, seguimos saltándola hasta que aparezca contenido real
 
-                for line in lines:
-                    stripped = line.strip()
+        for i, page in enumerate(ocr_response.pages, start=1):
+            lines = page.markdown.splitlines()
 
-                    # Preservar tablas
-                    if stripped.startswith("|") and "|" in stripped:
-                        if not inside_table:
-                            if buffer:
-                                combined_md_content += buffer + "\n"
-                                buffer = ""
-                            inside_table = True
-                        combined_md_content += line + "\n"
+            # Detectar TOC
+            page_is_toc = self._looks_like_toc(lines)
+            if page_is_toc:
+                toc_seen = True
+                # Saltamos esta página
+                combined_blocks.append(f"<!-- Página {i} -->\n")
+                continue
+
+            # Si venimos de páginas TOC, pero esta página inicia con muchas líneas tipo “num ..... pág”
+            # hacemos una limpieza adicional: filtramos todas esas líneas residuales.
+            if toc_seen:
+                cleaned_lines = []
+                for ln in lines:
+                    ln_norm = self._strip_md_markup(ln)
+                    if self.re_toc_line.match(ln_norm) or re.search(r"\.{2,}\s*\d+\s*$", ln_norm):
                         continue
-                    elif inside_table and not stripped.startswith("|"):
-                        inside_table = False
+                    cleaned_lines.append(ln)
+                lines = cleaned_lines
 
-                    # Encabezado numérico (ej. 11.1.1.1)
-                    match = re.match(r"(#+)?\s*(\d+(?:\.\d+)+)\s+(.*)", stripped)
-                    # Corregir encabezados sin numeración mal formateados (ej. "# Etapa de cierre")
-                    if re.match(r"^#+\s+[A-ZÁÉÍÓÚÜÑ][a-z].*", stripped) and not re.search(r'\d+\.', stripped):
-                        buffer += f"**{stripped.lstrip('#').strip()}**\n"
-                        continue
+            # Normalizar contenido de la página (encabezados/tablas)
+            page_body = self._normalize_page_lines(lines)
 
-                    if match:
-                        if buffer:
-                            combined_md_content += buffer + "\n"
-                            buffer = ""
+            # Si la página quedó prácticamente vacía tras limpiar TOC residual, solo marca página
+            if page_body.strip():
+                combined_blocks.append(page_body)
+            combined_blocks.append(f"\n<!-- Página {i} -->\n")
 
-                        numeracion = match.group(2)
-                        titulo = match.group(3).strip()
-                        niveles = numeracion.split(".")
-                        nivel = len(niveles)
-                        titulo_lower = titulo.lower()
+        # 4) Ensamble final
+        md_text = "\n".join(combined_blocks).strip() + "\n"
 
-                        if nivel == 1:
-                            formatted = f"# {numeracion} {titulo}"
-                        elif any(p in titulo_lower for p in componentes_tematicos):
-                            formatted = f"### {numeracion} {titulo}"
-                        elif any(p in titulo_lower for p in subtemas):
-                            formatted = f"**{numeracion} {titulo}**"
-                        else:
-                            formatted = f"#### {numeracion} {titulo}"
+        # 5) Segmentar nodos numerados
+        nodos = segmentar_por_nodos_heading(md_text)
 
-                        combined_md_content += formatted + "\n"
+        # 6) Guardar
+        output_file.write_text(md_text, encoding="utf-8")
 
-                    else:
-                        # Si es una línea aislada como "Etapa de cierre", no la conviertas en heading
-                        if stripped and any(p in stripped.lower() for p in subtemas):
-                            buffer += f"**{stripped}**\n"
-                        else:
-                            buffer += line + "\n"
-
-                if buffer:
-                    combined_md_content += buffer + "\n"
-
-                combined_md_content += f"\n<!-- Página {i} -->\n\n"
-
-            # 🔧 FILTRADO DE ARTEFACTOS COMO 'EPISAMIL'
-            filtered_md_content = "\n".join(
-                line for line in combined_md_content.splitlines()
-                if not re.search(r'\bEPISAMIL\b', line, re.IGNORECASE)
-                and not re.match(r'#\s*AtkinsRéalis', line, re.IGNORECASE)
-                and not re.match(r'#\s*FOLIO', line, re.IGNORECASE)
-            )
-
-            # 🧠 Segmentar por nodos temáticos tipo 11.1.1.1, 11.1.1.2, etc.
-            nodos = segmentar_por_nodos_heading(filtered_md_content)
-
-            # Save filtered content to file
-            output_file.write_text(filtered_md_content, encoding='utf-8')
-
-            # Return the cleaned markdown
-            return {
-                "file_name": pdf_path.stem,
-                "md_text": filtered_md_content,
-                "nodos": nodos
-            }
-
-        except Exception as e:
-            raise Exception(f"Error processing PDF {pdf_path.name}: {str(e)}")
+        return {
+            "file_name": pdf_path.stem,
+            "md_text": md_text,
+            "nodos": nodos,
+            "output_path": str(output_file),
+        }
