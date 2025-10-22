@@ -1,37 +1,25 @@
 """
 fix_headings.py — Normalización de encabezados Markdown con LLM (paralelo, robusto).
 
-Objetivo:
-- Reestructurar y normalizar encabezados (a partir de ##), listas y tablas en contenido Markdown,
-  manteniendo el contenido factual intacto y mejorando la legibilidad.
-
-Componentes:
-- get_optimal_thread_count(): determina hilos óptimos (min(32, 2*CPU)).
-- ThreadSafeLLM: gestor thread-safe de instancias de chat model (una por hilo).
-- HeadingParser:
-    - process_page(page_content, page_index): normaliza una “página” con LLM (reintentos y logs).
-    - normalize_headings(file_name, md_content, output_dir): divide por separador, procesa en paralelo,
-      reensambla en orden y persiste en data/processed/<file_name>/<file_name>.md. Retorna el markdown final.
-
-Flujo:
-1) split por separador de páginas (self.page_separator).
-2) parallel map con ThreadPoolExecutor → process_page().
-3) merge ordenado por índice; fallback a original en errores.
-4) write .md en carpeta de salida; cleanup de instancias LLM.
+Mejoras:
+- Split por páginas usando el separador real del OCR: <!-- Página N --> (conserva el marcador).
+- Prompt reforzado: NO renombrar encabezados numerados ni inventar secciones.
+- Posprocesado determinista: retag H2..H6 según profundidad del numeral.
+- Unwrap de negritas alrededor de headings (**### ...** -> ### ...).
+- Deduplicación de numerales repetidos en el mismo heading.
 
 Requisitos:
-- LangChain, Tenacity, TQDM; credenciales del provider LLM (google_genai).
-- GRPC_FORK_SUPPORT_ENABLED=1 (evita issues con gRPC y forking).
-
-Notas:
-- Asegura alinear el separador de páginas con el parser que genera el markdown (p. ej., <!-- Página N -->).
-- Controla max_workers si hay límites de cuota del LLM.
+- langchain, tenacity, tqdm; credenciales del provider LLM (google_genai).
+- GRPC_FORK_SUPPORT_ENABLED=1
 """
+
+from __future__ import annotations
 
 import logging
 import multiprocessing
 import os
 import threading
+import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 
 # Set multiprocessing start method to "spawn" before any other imports
@@ -64,24 +52,22 @@ except ImportError as e:
     logger.error(f"Failed to import required modules: {e}")
     raise
 
-# System prompt for heading normalization
+# ----------------------------
+# Prompt reforzado (no inventes ni renombres)
+# ----------------------------
 system_prompt = """
-Eres un asistente experto en reformatear documentos legales y técnicos, con un enfoque en la creación de estructuras jerárquicas claras y concisas. Tu tarea principal es transformar un texto plano en un documento estructurado utilizando Markdown, específicamente enfatizando la organización multinivel a partir del nivel de encabezado 2 (##).
+Eres un asistente experto en dar FORMATO a documentos técnicos en Markdown.
+NO debes alterar el CONTENIDO FACTUAL ni RENOMBRAR encabezados existentes.
+NO inventes encabezados ni secciones nuevas.
 
-**Instrucciones específicas:**
-
-1.  **Jerarquía Markdown:**  Organiza el texto utilizando encabezados Markdown (##, ###, ####, etc.) para representar la jerarquía lógica del documento. Asegúrate de que cada sección tenga un encabezado apropiado y que las subsecciones estén anidadas correctamente. Comienza la jerarquía en el nivel de encabezado 2.
-2.  **Formato de listas y tablas:** Cuando corresponda, utiliza listas (ordenadas y no ordenadas) y tablas para presentar información de manera clara y organizada. Formatea las tablas con encabezados y alineación apropiados.
-3.  **Claridad y concisión:** Reestructura las oraciones y párrafos para mejorar la legibilidad y la fluidez del texto, sin alterar su significado original.  Evita la redundancia y la ambigüedad.
-4.  **Respetar el contenido original:** No modifiques el contenido factual del documento. Tu objetivo es mejorar la estructura y la presentación, no alterar la información proporcionada.
-5.  **Consistencia:** Aplica un estilo consistente en todo el documento, incluyendo el uso de mayúsculas, minúsculas, puntuación y formato de listas y tablas.
-6. **énfasis a listas:** Si hay instrucciones, regulaciones o ítems enumerados, asegúrate de representarlos en un formato de lista con viñetas o numerados para que sean fáciles de identificar y entender.
-7. **énfasis a tablas:** Las tablas siempre deben incluir títulos claros y descriptivos.
-8. En tu respuesta solamente da el contenido del MD sin triple backtick (```)
-9. MANTEN EL CONTENIDO ORIGINAL SIN MODIFICARLO.
-10. EVITA REDUNDANCIAS AL MOMENTO DE TRANSCRIBIR.
-
-**Actúa como un asistente legal/técnico profesional.** Tu objetivo es producir documentos bien estructurados, fáciles de leer y que mantengan la integridad del contenido original.
+REGLAS:
+1) Jerarquía: Usa encabezados Markdown desde ##. Mantén EXACTOS los encabezados que ya tengan numeral (ej. "3.3.5.2. Título").
+   - Si un párrafo pertenece a ese encabezado, colócalo debajo sin cambiar el texto del encabezado.
+2) Listas/tablas: Convierte numeraciones o bullets del texto a listas Markdown; las tablas deben tener cabecera.
+3) No crees títulos nuevos; no cambies el texto de títulos existentes, sobre todo si comienzan con numeral.
+4) Si hay subitems "A. ...", "B. ...", respétalos como listas y NO los transformes en encabezados.
+5) MANTÉN el contenido literal, solo reestructura el formato.
+6) Respuesta: solo el Markdown; sin backticks.
 """
 
 NORMALIZE_TEMPLATE = """
@@ -92,7 +78,9 @@ Contenido a normalizar:
 {content}
 """
 
-
+# ----------------------------
+# Utilidades
+# ----------------------------
 def get_optimal_thread_count():
     """Calculate optimal thread count based on CPU cores."""
     try:
@@ -102,6 +90,64 @@ def get_optimal_thread_count():
         return 4
 
 
+# ----------------------------
+# Retag determinista por numeral
+# ----------------------------
+RE_MD_H = re.compile(r"^(?P<Hash>#{1,6})\s*(?P<num>(?:\d+\.)+\d+|\d+\.)\s+(?P<title>.+?)\s*$")
+RE_NUM_TITLE = re.compile(r"^(?P<num>(?:\d+\.)+\d+|\d+\.)\s+(?P<title>.+?)$")
+
+def _depth_from_numeral(numeral: str) -> int:
+    return len(numeral.rstrip(".").split("."))
+
+def _level_from_depth(depth: int, base_h: int = 2) -> int:
+    # base_h=2 => "3." -> ##, "3.3." -> ###, ...
+    return max(2, min(6, base_h - 1 + depth))
+
+def retag_md_headings_by_numeral(md_text: str, base_h: int = 2) -> str:
+    """Ajusta niveles Hx coherentes con la profundidad del numeral (sin cambiar títulos)."""
+    out = []
+    for ln in md_text.splitlines():
+        s = ln.strip()
+
+        # Heading con hashes y numeral
+        m = RE_MD_H.match(s)
+        if m:
+            num = m.group("num")
+            title = m.group("title")
+            depth = _depth_from_numeral(num)
+            hx = "#" * _level_from_depth(depth, base_h)
+            # dedupe numeral duplicado (e.g., "3.3.8.7. 3.3.8.7.")
+            num_dedup = re.sub(rf"^({re.escape(num)})(\s+{re.escape(num)})\b", r"\1", f"{num}")
+            out.append(f"{hx} {num_dedup} {title}")
+            continue
+
+        # Línea que empieza con numeral + título (sin hashes)
+        m2 = RE_NUM_TITLE.match(s)
+        if m2:
+            num = m2.group("num")
+            title = m2.group("title")
+            depth = _depth_from_numeral(num)
+            hx = "#" * _level_from_depth(depth, base_h)
+            out.append(f"{hx} {num} {title}")
+            continue
+
+        # Unwrap de ** alrededor de headings (caso OCR: **### 3.1 ...**)
+        if s.startswith("**#"):
+            s2 = s.strip("* ")
+            if RE_MD_H.match(s2):
+                out.append(s2)
+                continue
+
+        out.append(ln)
+    text = "\n".join(out)
+    # Arreglo extra de numerales duplicados dentro de la misma línea
+    text = re.sub(r"((?:^|\s)(#{2,6}\s+)(\d+(?:\.\d+)+\.))\s+\3", r"\1", text)
+    return text
+
+
+# ----------------------------
+# LLM thread-safe
+# ----------------------------
 class ThreadSafeLLM:
     """Thread-safe LLM handler."""
 
@@ -136,6 +182,9 @@ class ThreadSafeLLM:
             logger.error(f"Error during LLM cleanup: {e}")
 
 
+# ----------------------------
+# Parser
+# ----------------------------
 class HeadingParser:
     """Class for parsing and normalizing headings in markdown documents using LLM."""
 
@@ -148,7 +197,11 @@ class HeadingParser:
             self.llm_handler = ThreadSafeLLM()
             self.results = {}
             self._lock = threading.Lock()
-            self.page_separator = "-----"
+
+            # Nuevo: separador real de páginas proveniente del OCR
+            # split por regex que CONSERVA el marcador <!-- Página N -->
+            self.page_split_regex = re.compile(r"(?=<!--\s*Página\s*\d+\s*-->)")
+            self.page_joiner = "\n"
         except Exception as e:
             logger.error(f"Error initializing HeadingParser: {e}")
             raise
@@ -204,8 +257,9 @@ class HeadingParser:
             Normalized markdown content as a string.
         """
         try:
-            # Split content into pages
-            pages = md_content.split(self.page_separator)
+            # Split content into pages (conservando el marcador <!-- Página N -->)
+            pages = self.page_split_regex.split(md_content)
+            pages = [p for p in pages if p.strip()]  # descarta vacíos
             logger.info(f"Starting heading normalization for {len(pages)} pages")
 
             # Create output directory if it doesn't exist
@@ -232,7 +286,7 @@ class HeadingParser:
                 with tqdm(total=len(futures), desc="Processing pages") as pbar:
                     for future in as_completed(futures):
                         try:
-                            future.result(timeout=120)  # 2-minute timeout
+                            future.result(timeout=180)  # 3-minute timeout per page
                         except TimeoutError:
                             logger.error(f"Timeout processing page {futures[future]}")
                         except Exception as e:
@@ -242,13 +296,20 @@ class HeadingParser:
                         finally:
                             pbar.update(1)  # Always update progress
 
-            # Create final normalized content
+            # Merge en orden
             normalized_pages = []
             for i in range(len(pages)):
                 normalized_pages.append(self.results.get(i, pages[i]))
 
-            normalized_content = self.page_separator.join(normalized_pages)
+            normalized_content = self.page_joiner.join(normalized_pages)
 
+            # 🔧 Posprocesado determinista:
+            # - retag H2..H6 según profundidad del numeral
+            # - unwrap ** alrededor de headings
+            # - dedupe numerales duplicados
+            normalized_content = retag_md_headings_by_numeral(normalized_content, base_h=2)
+
+            # Persistir
             try:
                 output_file = os.path.join(output_path, f"{file_name}.md")
                 with open(output_file, "w", encoding="utf-8") as file:
