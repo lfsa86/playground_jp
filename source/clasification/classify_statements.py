@@ -109,14 +109,14 @@ def force_group_index_block(md: str) -> str:
 # Numerales tipo 3., 3.3., 3.3.5.2 (acepta con/sin espacio y cualquier char después)
 _NUMBERED_RE = re.compile(r'^\s*\d+(?:\.\d+)*\.?\s*')
 
-# Subtítulos letra (A., B., a., b., etc.) — informativo (por si quieres usar luego)
-_LETTERED_RE = re.compile(r'^\s*[A-Za-z]\.\s+')
-
 # Títulos macro que NO deben iniciar la ruta
 _MACRO_RE = re.compile(r'^\s*(CAP[IÍ]TULO\b|Í?NDICE\b)', re.IGNORECASE)
 
 # Bullets / guiones comunes a limpiar al inicio
 _BULLET_PREFIX_RE = re.compile(r'^\s*([•·\-–—]+|\*\s+)+')
+
+# --- NUEVO: detectar subtítulos con letra (A., B., a., b., etc.)
+LETTER_RE = re.compile(r'^\s*[\(\[]?([A-Za-z])[\)\]]?[\.\-]?\s+')
 
 def _clean_title(title: str) -> str:
     if not isinstance(title, str):
@@ -151,7 +151,7 @@ def _is_numbered(title: str) -> bool:
     if re.match(r"^\s*\d{4,}\b(?!\.)", t):
         return False
 
-    # Detectar numerales jerárquicos válidos
+    # Detectar numerales jerárquicos válidos (al menos un punto)
     if re.match(r"^\s*\d{1,2}(\.\d{1,3})+\.?\s*", t):
         return True
 
@@ -163,6 +163,9 @@ def _is_numbered(title: str) -> bool:
 
 def _is_macro(title: str) -> bool:
     return bool(_MACRO_RE.match(title or ""))
+
+def _is_lettered(title: str) -> bool:
+    return bool(LETTER_RE.match(title or ""))
 
 def _get_parent(tree, node):
     try:
@@ -259,6 +262,44 @@ def _find_closest_numbered_anchor(tree, node) -> Optional[object]:
 
     return None  # si no se encuentra nada
 
+def _linear_dfs_order(tree):
+    """Devuelve lista [(node_id, node)] en orden DFS (incluye root)."""
+    try:
+        iterator = ElementIterator(tree)
+        return [(nid, n) for nid, n, _d in iterator.iterate_depth_first(skip_root=False)]
+    except Exception:
+        # Fallback sin garantía de orden
+        return list(getattr(tree, "nodes", {}).items())
+
+def _find_prev_numbered_in_dfs(tree, node) -> Optional[object]:
+    """
+    Busca hacia atrás en el recorrido DFS el último nodo numerado válido.
+    Útil cuando un subtítulo 'B.' no tiene ancestro/hermano numerado detectable.
+    """
+    ordered = _linear_dfs_order(tree)
+    idx = -1
+    nid = getattr(node, "id", None)
+    for i, (cand_id, _cand_node) in enumerate(ordered):
+        if cand_id == nid:
+            idx = i
+            break
+    if idx <= 0:
+        return None
+
+    for j in range(idx - 1, -1, -1):
+        _idj, cand = ordered[j]
+        t = _clean_title(getattr(cand, "title", "") or "")
+        if t and not _is_macro(t) and _is_numbered(t):
+            return cand
+    return None
+
+def _join_anchor_with_leaf(anchor_title: str, leaf_title: str) -> str:
+    left = _clean_title(anchor_title or "")
+    right = _clean_title(leaf_title or "")
+    if left and right:
+        return f"{left} > {right}"
+    return left or right or "Sin numeral"
+
 def build_numeric_first_heading_path(tree, node) -> str:
     """
     Construye un heading_path que SIEMPRE inicia en el numeral más cercano:
@@ -266,6 +307,8 @@ def build_numeric_first_heading_path(tree, node) -> str:
         preservando intermedios (saltando macros).
       - Si NO hay ancestro numerado, se busca el hermano numerado más cercano (o del padre al subir).
         En ese caso la ruta será: "<ancla_numerada> > <título_actual>".
+      - Si aún no hay ancla y el título es tipo "B. ...", se busca hacia atrás en DFS
+        el último encabezado numerado válido y se usa como ancla.
     """
     # Cadena node->root
     chain: List[Tuple[object, str]] = []
@@ -313,9 +356,10 @@ def build_numeric_first_heading_path(tree, node) -> str:
     # 2) No hay ancestro numerado: buscar ancla numerada más cercana (hermano anterior, etc.)
     _ensure_children_index(tree)
     anchor = _find_closest_numbered_anchor(tree, node)
+    leaf_title = chain[0][1]  # título del nodo actual (limpio)
+
     if anchor is not None:
         anchor_title = _clean_title(getattr(anchor, "title", "") or "")
-        leaf_title = chain[0][1]
         # Filtrar macro y empty
         left = anchor_title if (anchor_title and not _is_macro(anchor_title)) else ""
         right = leaf_title if (leaf_title and not _is_macro(leaf_title)) else ""
@@ -327,8 +371,13 @@ def build_numeric_first_heading_path(tree, node) -> str:
             return right
         return "Sin numeral"
 
+    # 2-bis) Si el nodo es tipo "B. ..." intenta el ancla por DFS hacia atrás
+    if _is_lettered(leaf_title):
+        cand = _find_prev_numbered_in_dfs(tree, node)
+        if cand is not None:
+            return _join_anchor_with_leaf(getattr(cand, "title", ""), leaf_title)
+
     # 3) Último fallback
-    leaf_title = chain[0][1]
     return leaf_title if (leaf_title and not _is_macro(leaf_title)) else "Sin numeral"
 
 # ------------------------------------------------------------------------------
