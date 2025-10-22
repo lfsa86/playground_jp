@@ -70,8 +70,24 @@ class PDFParser:
         self.re_num_heading = re.compile(r"^(?:#+\s*)?(\d+(?:\.\d+)+)\.?\s+(.*)$")
         self.re_alpha_item = re.compile(r"^[A-Z]\.\s+.+$")
         self.re_hash_heading = re.compile(r"^#{1,6}\s+.+$")
-        self.re_dup_numeral = re.compile(r"(\d+(?:\.\d+)+\.)\s+\1")  # “3.3.8.7. 3.3.8.7.” -> uno
+        self.re_dup_numeral = re.compile(r"(\d+(?:\.\d+)+\.)\s+\1")
         self.re_inline_heading_in_bold = re.compile(r"^\*+\s*(#{1,6}\s+.+?)\s*\*+\s*$")
+
+        # --- NUEVO: patrones para header/footer por página ---
+        # Números de página (Pág. 31, 31, 31/120, Página 31, etc.)
+        self.re_page_num = re.compile(
+            r"^\s*(?:P(?:á|a)g(?:\.|ina)?\.?\s*)?\d{1,5}(?:\s*/\s*\d+)?\s*$",
+            re.IGNORECASE,
+        )
+        # Códigos/folios/logos breves tipo "00093", "ABC-123"
+        self.re_doc_code = re.compile(r"^\s*[A-Z0-9\-_/]{5,}\s*$")
+        # Línea casi toda en mayúsculas (suelen ser sellos, razones sociales, etc.)
+        self.re_all_caps = re.compile(r"^[^a-záéíóúñ]*[A-ZÁÉÍÓÚÑ]{3,}[^a-záéíóúñ]*$")
+        # Frases típicas de pie/encabezado institucionales (ajustable)
+        self.re_footer_org = re.compile(
+            r"(autopista del norte|fcisa|elaborado por|prepared by|copyright|firma)",
+            re.IGNORECASE,
+        )
 
     # ---------------- TOC detection mejorado ----------------
     def _looks_like_toc(self, lines: List[str]) -> bool:
@@ -112,6 +128,88 @@ class PDFParser:
         s = re.sub(r"^#{1,6}\s*", "", s)
         return s.strip()
 
+    # ---------------- NUEVO: detección de contenido / pie ----------------
+    def _is_content_line(self, s: str) -> bool:
+        """Heurística: decide si una línea parece contenido real del documento."""
+        stripped = s.strip()
+        if not stripped:
+            return False
+        if stripped.startswith("|") and "|" in stripped:  # tablas
+            return True
+        if self.re_num_heading.match(stripped):           # "3.3.1 Título"
+            return True
+        if self.re_hash_heading.match(stripped):          # "# Título"
+            return True
+        if re.match(r"^\s*Tabla\s+\d+(?:[\-–]\d+)?\b", stripped, re.IGNORECASE):
+            return True
+        if re.match(r"^\s*[-•]\s+\S+", stripped):         # viñetas
+            return True
+        # Párrafo: minúsculas + longitud razonable
+        if re.search(r"[a-záéíóúñ]{3,}", stripped) and len(stripped) >= 40:
+            return True
+        return False
+
+    def _is_footer_line(self, s: str) -> bool:
+        """Heurística: decide si una línea parece pie de página o ruido inferior."""
+        stripped = s.strip()
+        if not stripped:
+            return True
+        if self.re_page_num.match(stripped):
+            return True
+        if self.re_footer_org.search(stripped):
+            return True
+        if self.re_all_caps.match(stripped) and len(stripped) <= 60:
+            return True
+        if self.re_doc_code.match(stripped) and len(stripped) <= 12:
+            return True
+        return False
+
+    def _strip_page_headers_and_footers(self, lines: List[str], page_no: int) -> List[str]:
+        """
+        Corta:
+          - HEADER: desde el tope hasta la primera línea que parezca contenido.
+          - FOOTER: desde el final hacia arriba, corta bloques que parezcan pie.
+        Conserva tablas y headings. Si no detecta nada, devuelve igual.
+        """
+        if not lines:
+            return lines
+
+        # HEADER: primera línea que luce contenido
+        start_idx = 0
+        for i, ln in enumerate(lines):
+            if self._is_content_line(ln):
+                start_idx = i
+                break
+
+        # FOOTER: run final de líneas-que-parecen-pie hasta topar contenido
+        end_idx = len(lines)
+        j = len(lines) - 1
+        seen_content = False
+        tail_cut = 0
+        while j >= start_idx:
+            ln = lines[j]
+            if not seen_content:
+                if self._is_footer_line(ln):
+                    tail_cut += 1
+                    j -= 1
+                    continue
+                seen_content = True
+                j -= 1
+            else:
+                break
+        if tail_cut > 0:
+            end_idx = len(lines) - tail_cut
+
+        sliced = lines[start_idx:end_idx]
+
+        # Limpieza adicional en el borde superior recortado
+        while sliced and (
+            self.re_all_caps.match(sliced[0].strip()) or self.re_doc_code.match(sliced[0].strip())
+        ):
+            sliced.pop(0)
+
+        return sliced
+
     # ---------------- Normalización de líneas ----------------
     def _format_heading_or_text(self, stripped: str) -> str:
         """
@@ -119,37 +217,31 @@ class PDFParser:
         - Encabezado numérico -> Hx según profundidad: 1->##, 2->###, 3->####, 4->#####, 5->######.
         - “CAPÍTULO X” -> # CAPÍTULO X
         - Segunda línea tipo “DESCRIPCIÓN …” -> ## DESCRIPCIÓN …
-        - Items “A. Texto”/“B. Texto” -> bullet: "- A. Texto" (no “1.”).
-        - Si venía “**### 3.1 …**” -> quitar negritas, dejar “### 3.1 …”.
+        - Items “A. Texto”/“B. Texto” -> bullet: "- A. Texto".
+        - Quita negritas falsas que envuelven headings (**### …**).
         """
-        # Quitar posibles envolturas en ** para headings (evita **### …**)
         m_bold_head = self.re_inline_heading_in_bold.match(stripped)
         if m_bold_head:
             stripped = m_bold_head.group(1).strip()
 
-        # CAPÍTULO X
         if re.match(r"^(cap[ií]tulo)\s+[ivx\d]+", stripped, re.IGNORECASE):
             return f"# {self._strip_md_markup(stripped)}"
 
-        # “DESCRIPCIÓN DEL INFORME ...” (cuando viene inmediatamente tras CAPÍTULO)
         if re.match(r"^(descripci[oó]n)\b", stripped, re.IGNORECASE):
             return f"## {self._strip_md_markup(stripped)}"
 
-        # Encabezado con numeral (con/sin #)
         m_num = self.re_num_heading.match(stripped)
         if m_num:
             numeracion = m_num.group(1)
             titulo = m_num.group(2).strip()
             niveles = numeracion.rstrip(".").split(".")
-            depth = max(1, min(5, len(niveles)))  # cap en 5 -> hasta ######
-            hashes = "#" * (depth + 1)           # 1->##, 2->###, 3->####, 4->#####, 5->######
+            depth = max(1, min(5, len(niveles)))
+            hashes = "#" * (depth + 1)  # 1->##, 2->###, 3->####, 4->#####, 5->######
             return f"{hashes} {numeracion}. {titulo}"
 
-        # “A. Texto” / “B. Texto” -> bullet plano (conserva letra)
         if self.re_alpha_item.match(stripped):
             return f"- {stripped}"
 
-        # Si ya venía como heading con #, devuélvelo igual (pero sin duplicar **)
         if self.re_hash_heading.match(stripped):
             return stripped
 
@@ -203,9 +295,9 @@ class PDFParser:
         flush_buffer()
         page_body = "\n".join(out).strip()
 
-        # Limpieza final: si quedaron negritas arropando hashes (casos raros)
+        # Limpieza final
         page_body = re.sub(r"\*\s*(#{2,6}\s+)", r"\1", page_body)
-        page_body = re.sub(r"(#{2,6}\s+[0-9.]+\.)\s+\1", r"\1", page_body)  # doble numeral exacto
+        page_body = re.sub(r"(#{2,6}\s+[0-9.]+\.)\s+\1", r"\1", page_body)
 
         return page_body
 
@@ -254,16 +346,17 @@ class PDFParser:
         for i, page in enumerate(ocr_response.pages, start=1):
             lines = page.markdown.splitlines()
 
+            # --- NUEVO: recortar encabezados/pies por página ---
+            lines = self._strip_page_headers_and_footers(lines, i)
+
             # Detectar TOC
             page_is_toc = self._looks_like_toc(lines)
             if page_is_toc:
                 toc_seen = True
-                # Saltamos esta página
                 combined_blocks.append(f"<!-- Página {i} -->\n")
                 continue
 
-            # Si venimos de páginas TOC, pero esta página inicia con muchas líneas tipo “num ..... pág”
-            # hacemos una limpieza adicional: filtramos todas esas líneas residuales.
+            # Limpiar restos de TOC si venimos de páginas índice
             if toc_seen:
                 cleaned_lines = []
                 for ln in lines:
@@ -276,7 +369,6 @@ class PDFParser:
             # Normalizar contenido de la página (encabezados/tablas)
             page_body = self._normalize_page_lines(lines)
 
-            # Si la página quedó prácticamente vacía tras limpiar TOC residual, solo marca página
             if page_body.strip():
                 combined_blocks.append(page_body)
             combined_blocks.append(f"\n<!-- Página {i} -->\n")
