@@ -22,23 +22,6 @@ file_name = file_path.stem
 BASE_OUT = Path("data/processed") / file_name
 BASE_OUT.mkdir(parents=True, exist_ok=True)
 
-def save_commitments(df: pd.DataFrame, out_dir: Path, write_xlsx: bool = True):
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # siempre CSV + Parquet; XLSX si se pide
-    df.to_csv(out_dir / "commitments.csv", index=False, encoding="utf-8-sig")
-    try:
-        df.to_parquet(out_dir / "commitments.parquet")
-    except Exception as e:
-        print(f"ℹ️ No se pudo exportar Parquet: {e}")
-    if write_xlsx:
-        try:
-            try:
-                df.to_excel(out_dir / "commitments.xlsx", index=False, sheet_name="commitments", engine="xlsxwriter")
-            except Exception:
-                df.to_excel(out_dir / "commitments.xlsx", index=False, sheet_name="commitments")
-        except Exception as e:
-            print(f"ℹ️ No se pudo exportar a Excel: {e}")
-
 # -------------------- MENÚ --------------------
 print("\n🛠 OPCIONES DE EJECUCIÓN:")
 print("1. Hasta markdown con headings normalizados")
@@ -86,9 +69,6 @@ print("\n▶ Paso 3: Extrayendo compromisos detallados...")
 commitment_extractor = CommitmentExtractor()
 df_commitments = commitment_extractor.extract(file_name=file_name, df=df_statements)
 
-# Guardado ESTÁNDAR de commitments:
-commitments_out_dir = BASE_OUT / "commitments"
-save_commitments(df_commitments, commitments_out_dir, write_xlsx=True)
-
-print(f"✅ Archivos de commitments en: {commitments_out_dir}")
+# ⚠️ Ya no guardamos aquí: el método extract() lo hace internamente
+print(f"✅ Archivos de commitments generados automáticamente en: data/processed/{file_name}/commitments/")
 print("\n🎉 Pipeline completo ejecutado exitosamente.")

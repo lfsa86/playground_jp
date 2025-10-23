@@ -103,6 +103,98 @@ def force_group_index_block(md: str) -> str:
     return "\n".join(new_lines)
 
 # ------------------------------------------------------------------------------
+# TOC sanitizers (nuevos): evitar que el índice cree nodos
+# ------------------------------------------------------------------------------
+
+# 1) "Bajar" headings con patrón de puntos + número de página
+_TOC_DOTTED_RE = re.compile(r'(?:\.|\·){3,}\s*\d+\s*$')
+_TOC_HEAD_RE = re.compile(r'^\s{0,3}(#{1,6})\s+(.+)$')
+
+def demote_toc_headings_by_dots(md: str) -> str:
+    """
+    Convierte en viñetas normales los headings que terminan con "..... <página>",
+    típico del índice, para que el parser no cree nodos.
+    """
+    if not md:
+        return md
+    out = []
+    for line in md.splitlines():
+        m = _TOC_HEAD_RE.match(line)
+        if m:
+            title = m.group(2).rstrip()
+            if _TOC_DOTTED_RE.search(title):
+                # Heading de índice -> viñeta
+                text = re.sub(r'^\s*#{1,6}\s*', '', line).rstrip()
+                out.append(f"- {text}")
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+# 2) Encapsular el bloque de índice inicial (aunque no tenga puntos)
+_HEAD_RE = re.compile(r'^\s{0,3}#{1,6}\s+')
+_PAGE_MARK_RE = re.compile(r'^\s*<!--\s*Página\b', re.IGNORECASE)
+
+def collapse_initial_toc_block(md: str) -> str:
+    """
+    Detecta un bloque inicial tipo índice (secuencia de headings/viñetas sin párrafos “reales”)
+    y lo encapsula en un bloque de código ``` ... ``` para neutralizar los headings.
+    """
+    if not md:
+        return md
+
+    lines = md.splitlines()
+    n = len(lines)
+
+    def is_heading(i):
+        return _HEAD_RE.match(lines[i] or "") is not None
+
+    def is_nonempty(i):
+        return bool((lines[i] or "").strip())
+
+    def is_paragraph(i):
+        ln = (lines[i] or "").strip()
+        if not ln:
+            return False
+        if _HEAD_RE.match(ln):
+            return False
+        if ln.startswith("- ") or ln.startswith("* "):
+            return False
+        if _PAGE_MARK_RE.match(ln):
+            return False
+        # considerar párrafo si tiene varias palabras
+        return len(re.findall(r'\w+', ln)) >= 6
+
+    # Buscar el primer heading cuyo "bloque siguiente" contenga párrafo real
+    real_start = None
+    i = 0
+    while i < n:
+        if is_heading(i):
+            saw_paragraph = False
+            j = i + 1
+            while j < n and j < i + 25:
+                if is_paragraph(j):
+                    saw_paragraph = True
+                    break
+                if is_heading(j) or lines[j].strip().startswith(("- ", "* ")):
+                    # sigue “listado” de headings/viñetas -> probablemente TOC
+                    pass
+                j += 1
+            if saw_paragraph:
+                real_start = i
+                break
+        i += 1
+
+    if real_start is None or real_start <= 0:
+        return md
+
+    toc_block = "\n".join(lines[:real_start]).strip("\n")
+    rest = "\n".join(lines[real_start:])
+    if "```" not in toc_block:
+        toc_block = "```\n" + toc_block + "\n```"
+
+    return toc_block + "\n\n" + rest
+
+# ------------------------------------------------------------------------------
 # Utils de heading: construir ruta empezando en numeral más cercano
 # ------------------------------------------------------------------------------
 
@@ -634,7 +726,10 @@ def classify_statements(
     output_path = os.path.join(output_dir, file_name, "statements")
     os.makedirs(output_path, exist_ok=True)
 
-    md_content = force_group_index_block(md_content)
+    # --- Preprocesamiento anti-TOC ---
+    md_content = force_group_index_block(md_content)       # bloque "# ÍNDICE" -> code fence
+    md_content = demote_toc_headings_by_dots(md_content)   # headings con "..... N" -> viñetas
+    md_content = collapse_initial_toc_block(md_content)    # colapsar bloque índice inicial
 
     parser = ElementParser()
     tree = parser.parse_text(md_content)

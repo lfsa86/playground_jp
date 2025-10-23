@@ -26,19 +26,19 @@ class Commitment(BaseModel):
         )
     coa: Optional[str] = Field(
             None,
-            description="Componente operativo al que se refiere el compromiso. Ejemplos: taller de camiones, deposito de desmonte, planta de cal, planta de lixiviación, toma de agua, PTARD."
+            description="Teniendo en cuenta la columna 'titulo' de la fuente de información para el analisis, identificamos el componente operativo del proyecto al que se refiere el texto del compromiso. Ejemplos: taller de camiones, deposito de desmonte, planta de cal, planta de lixiviación, fuentes de agua, PTARD. "
         )
     caa: Optional[str] = Field(
             None,
-            description="Componente ambiental afectado o protegido por el compromiso. Evita terminos genericos ya que hay diferencia entre agua subterranea, agua superfial, lagunas o similares. Ejemplos: aire, agua, suelo, biodiversidad, ruido, paisaje, etc."
+            description="Teniendo en cuenta la columna 'titulo' de la fuente de información para el analisis, inferimos el componente ambiental afectado o protegido al que se asocia el texto del compromiso. Evita terminos genericos ya que hay diferencia entre agua subterranea, agua superfial, lagunas o similares. Ejemplos de componentes ambientales: aire, ruido, vibraciones, agua superficial, agua subterranea, suelo, cobertura vegteal, biodiversidad, paisaje, etc."
         )
     fase_aplicacion: Optional[str] = Field(
             None,
-            description="Fase del proyecto donde se aplica el compromiso. Puede ser: construcción, operación, cierre, post cierre o todas las fases. En caso de que no se especifique en el texto refiere como 'sin especificar'"
+            description="Fase del proyecto donde se aplica el compromiso. Puede ser: construcción, operación, cierre, post cierre o todas las fases. En caso de que no se especifique en el texto refiere como '--'"
         )
     frecuencia_reporte: Optional[str] = Field(
             None,
-            description="Frecuencia con la que se debe reportar el cumplimiento del compromiso. Ejemplos: mensual, trimestral, anual, antes del inicio de obras, etc. Solo refiere a lo indicado en el texto, en caso no se encuentre en el texto refiere como 'sin especificar' "
+            description="Frecuencia con la que se debe reportar el cumplimiento del compromiso. Ejemplos: mensual, trimestral, anual, antes del inicio de obras, etc. Solo refiere a lo indicado en el texto, en caso no se encuentre en el texto refiere como '--' "
         )
     ubicacion: Optional[str] = Field(None, description="Lugar geográfico, componente operativo o infraestructura asociada al compromiso (por ejemplo: Mina, Línea de transmisión, Puerto, Todas las ubicaciones, etc.) En caso de que no se especifique en el texto refiere como 'sin especificar' ")
     tematica: Optional[str] = Field(None, description="Temática asociada al compromiso. Puede incluir temas como diseño de componentes operativos, actividades del proyecto, recursos del proyecto, impacto del proyecto, monitoreo, programa de manejo ambiental, programa de gestión social, entre otros similares")
@@ -49,5 +49,5 @@ class MultipleCommitments(BaseModel):
     """Modelo para múltiples compromisos extraídos desde un mismo enunciado."""
     compromisos: List[Commitment] = Field(
         default_factory=list,
-        description="Lista de compromisos identificados en un bloque de texto"
+        description="Lista de compromisos identificados en un bloque de texto sin que el tenor de los compromisos identificados se repita. NO DEBE EXISTIR redundancia en los compromisos identificados."
     )
