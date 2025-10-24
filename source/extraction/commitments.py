@@ -32,7 +32,7 @@ from ..schemas import MultipleCommitments
 # System prompt for commitment extraction
 SYSTEM_PROMPT = """
 Eres un asistente experto en análisis de documentos ambientales en Perú. Tu tarea es identificar y extraer **uno o más compromisos ambientales** de un texto dado. 
-Si encuentras más de un compromiso en el mismo bloque de texto, extrae cada uno por separado.
+Si encuentras más de un compromiso en el mismo bloque de texto, extrae cada uno por separado, pero asegurate que los compromisos no tengan el mismo tenor o naturaleza
 """
 
 ANALYSIS_TEMPLATE = """

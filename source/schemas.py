@@ -40,7 +40,7 @@ class Commitment(BaseModel):
             None,
             description="Frecuencia con la que se debe reportar el cumplimiento del compromiso. Ejemplos: mensual, trimestral, anual, antes del inicio de obras, etc. Solo refiere a lo indicado en el texto, en caso no se encuentre en el texto refiere como '--' "
         )
-    ubicacion: Optional[str] = Field(None, description="Lugar geográfico, componente operativo o infraestructura asociada al compromiso (por ejemplo: Mina, Línea de transmisión, Puerto, Todas las ubicaciones, etc.) En caso de que no se especifique en el texto refiere como 'sin especificar' ")
+    ubicacion: Optional[str] = Field(None, description="Lugar geográfico, componente operativo o infraestructura asociada al compromiso (por ejemplo: Mina, Línea de transmisión, Puerto, Todas las ubicaciones, etc.) En caso de que no se especifique en el texto refiere como '--' ")
     tematica: Optional[str] = Field(None, description="Temática asociada al compromiso. Puede incluir temas como diseño de componentes operativos, actividades del proyecto, recursos del proyecto, impacto del proyecto, monitoreo, programa de manejo ambiental, programa de gestión social, entre otros similares")
     dificultad_cumplimiento: Optional[str] = Field(None, description="Nivel de dificultad del cumplimiento: puede ser rutina operativa o requerir coordinación y servicios especializados. Catalogalo como Sencillo, Moderado o Complejo en base a tu analisis")
         
