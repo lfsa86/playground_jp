@@ -1,6 +1,6 @@
 El proceso debe seguir este orden:
 
-Paso 1 para convertir el PDF a Markdown: 
+Paso 1 para convertir el PDF a Markdown:  
 ejecutar:  
 python -m source.parsing.parse_pdf_md data/datapdf/“nombre_de_tu_archivo”.pdf
 el archivo se creará en data/processed/datamd con el nombre de “nombre_de_tu_archivo_raw”.
