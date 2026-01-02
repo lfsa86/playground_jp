@@ -29,7 +29,7 @@ secrets.json
 .DS_Store
 Thumbs.db
 desktop.ini
-#data/
+data/
 
 # Archivos de caché y logs
 logs/
@@ -47,7 +47,7 @@ tmp_*/
 
 # Modelos, bases de datos y archivos generados
 models/
-#data/
+data/
 datasets/
 output/
 *.h5

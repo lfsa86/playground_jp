@@ -233,7 +233,7 @@ class MarkdownCleaner:
         elapsed = str(datetime.timedelta(seconds=int(total_time)))
 
         print("\n──────────────────────────────────────────────")
-        print(f"✅ LIMPIEZA POR FILAS COMPLETAS COMPLETADA")
+        print(f"✅ LIMPIEZA POR FILAS COMPLETAS COMPLETADA ")
         print(f"📁 Carpeta: {parts_dir}")
         print(f"📊 Bloques generados: {block_idx}")
         print(f"⏱️ Tiempo total: {elapsed}")
