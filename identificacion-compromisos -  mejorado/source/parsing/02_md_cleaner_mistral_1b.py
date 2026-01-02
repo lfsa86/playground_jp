@@ -257,4 +257,4 @@ if __name__ == "__main__":
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else None
     cleaner = MarkdownCleaner()
     files = cleaner.clean_markdown(inp, out)
-    print(f"\n✅ Listo. Generados {len(files)} bloques seguros (filas completas) en 'cleaned_parts'")
+    print(f"\n✅ Listo. Generados {len(files)} bloques seguros (filas completas) en  'cleaned_parts'")
