@@ -108,6 +108,8 @@ class MarkdownCleaner:
                     - NO alteres el orden de las frases ni su puntuación.
                     - Respeta el formato del texto fuente, solo corrige la estructura y los saltos de línea.
                     - Devuelve solo el Markdown limpio, sin explicaciones.
+                    - Palabras que comiencen con ** y terminen ** no es una columna mas si no un titlo que debes obviarlo 
+                      como por  ejemplo ||**DESCRIPCIÓN DEL PROYECTO**|**DESCRIPCIÓN DEL PROYECTO**|**DESCRIPCIÓN DEL PROYECTO**|**DESCRIPCIÓN DEL PROYECTO**|||
                     ────────────────────────────────────────
                     REGLAS ADICIONALES PARA TABLAS (NO ELIMINAR TEXTO)
                     ────────────────────────────────────────
@@ -128,6 +130,7 @@ class MarkdownCleaner:
                     - NO elimines columnas.
                     - NO cambies el nombre de estas columnas.
                     - Si el texto de una columna no existe, deja la celda vacía.
+                    - importante y obligatorio no debes eliminar la columna que sigue despues del numero de fila ejemplo |1|senace|
                     ────────────────────────────────────────
                     REGLA OBLIGATORIA SOBRE <br>
                     ────────────────────────────────────────

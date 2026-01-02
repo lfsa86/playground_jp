@@ -154,20 +154,19 @@ def markdown_a_excel_desde_carpeta(
 # ==================================================================
 MIS_COLUMNAS = [
     "N°",
-    "ITEM",
-    "FUNDAMENTOS / SUSTENTOS",
-    "OBSERVACIONES",
-    "SUBSANACIÓN",
-    "INFORMACIÓN COMPLEMENTARIA",
-    "ANÁLISIS DE LA SUBSANACIÓN",
-    "ABSUELTO (SI/NO)"
+    "ENTIDAD",
+    "UBICACIÓN",
+    "SUSTENTO",
+    "OBSERVACIÓN",
+    "SUBSABACIÓN",
+    "SUBSANA (SI/NO)"
 ]
 
 # ==================================================================
 # CONFIGURACIÓN
 # ==================================================================
 carpeta_con_partes = Path("data/processed/datamd/cleaned_parts")  # ← Ajusta si es necesario
-archivo_excel_final = "compromisos_1bloque.xlsx"
+archivo_excel_final = "compromisos1.xlsx"
 
 # ==================================================================
 # EJECUTAR
@@ -178,6 +177,6 @@ if not carpeta_con_partes.exists():
 markdown_a_excel_desde_carpeta(
     carpeta_entrada=carpeta_con_partes,
     nombres_columnas=MIS_COLUMNAS,
-    num_columnas_esperadas=8,
+    num_columnas_esperadas=7,
     archivo_salida=archivo_excel_final
 )
